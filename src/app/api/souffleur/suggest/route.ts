@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
       : "";
 
     const msg = await client.messages.create({
-      model: "claude-3-5-haiku-latest",
+      model: "claude-haiku-4-5",
       max_tokens: 80,
       system: SYSTEM,
       messages: [

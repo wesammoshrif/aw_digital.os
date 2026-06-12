@@ -4,9 +4,8 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { TargetRing, WeekSparkline } from "@/components/TargetRing";
 import { QueueItem } from "@/components/QueueItem";
-import { GeminiChat } from "@/components/GeminiChat";
 import { dashboardSummary, isMockMode } from "@/lib/store";
-import { Phone, Calendar, TrendingUp, ArrowRight, Briefcase, Euro, Sparkles, Zap } from "lucide-react";
+import { Phone, Calendar, TrendingUp, ArrowRight, Euro, Clock, FileText, Radio } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +38,6 @@ export default async function HomePage() {
         </>
       }
     >
-      <GeminiStrategy />
-
       {/* ── Hero band: focus on today ──────────────────────────────── */}
       <section className="mb-6 grid grid-cols-12 gap-5">
         <Card className="col-span-7 flex items-center gap-8 px-8 py-7">
@@ -124,6 +121,30 @@ export default async function HomePage() {
         />
       </section>
 
+      {/* ── Anruf-Statistik ────────────────────────────────────────── */}
+      <section className="mb-8">
+        <Card className="grid grid-cols-4 divide-x divide-[var(--color-hairline)] p-0">
+          <CallStat label="Anrufe" value={String(data.callStats.total)} hint="protokolliert" />
+          <CallStat
+            label="Connect-Rate"
+            value={`${data.callStats.connectRate} %`}
+            hint={`${data.callStats.connected} erreicht`}
+          />
+          <CallStat
+            label="Ø Gesprächsdauer"
+            value={`${Math.floor(data.callStats.avgDuration / 60)}:${String(
+              data.callStats.avgDuration % 60,
+            ).padStart(2, "0")} min`}
+            hint="je erreichtem Anruf"
+          />
+          <CallStat
+            label="Termine / Interesse"
+            value={`${data.callStats.appointments} / ${data.callStats.interested}`}
+            hint="aus Anrufen"
+          />
+        </Card>
+      </section>
+
       <section className="mb-10">
         <div className="mb-3 flex items-end justify-between">
           <div>
@@ -204,7 +225,7 @@ export default async function HomePage() {
         </section>
 
         <aside className="col-span-4 mt-[46px]">
-          <GeminiChat />
+          <TodayGlance data={data} />
         </aside>
       </div>
 
@@ -222,49 +243,106 @@ export default async function HomePage() {
   );
 }
 
-async function GeminiStrategy() {
+function TodayGlance({
+  data,
+}: {
+  data: Awaited<ReturnType<typeof dashboardSummary>>;
+}) {
+  const appt = data.nextAppt;
   return (
-    <section className="mb-8 rise">
-      <Card className="relative overflow-hidden border-none gemini-card text-white p-0 shadow-2xl">
-        <div className="absolute top-[-20px] right-[-20px] p-4 opacity-20 animate-float">
-          <Sparkles className="h-40 w-40" />
+    <Card className="p-0 overflow-hidden">
+      <div className="border-b border-[var(--color-hairline)] px-5 py-3.5">
+        <div className="text-[10.5px] uppercase tracking-[0.14em] text-[var(--color-fg-mute)]">
+          Heute im Blick
         </div>
-        <div className="relative px-8 py-7">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.6)]">
-                <Zap className="h-4 w-4 text-white" />
+      </div>
+
+      <div className="space-y-3 px-5 py-4">
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[#eff5ff] text-[var(--color-copper-600)]">
+            <Calendar className="h-3.5 w-3.5" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[12.5px] font-medium text-[var(--color-fg)]">
+              {appt ? "Nächster Termin" : "Keine Termine heute"}
+            </div>
+            {appt && (
+              <div className="text-[12px] text-[var(--color-fg-mute)]">
+                {appt.startsAt.toLocaleDateString("de-DE", { weekday: "short" })}{" "}
+                {appt.startsAt.toLocaleTimeString("de-DE", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                · {appt.location ?? "—"}
               </div>
-              <div>
-                <span className="block text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400/80">Claude 3.5 AI</span>
-                <span className="block text-[18px] font-bold tracking-tight">Agentur-Strategie</span>
-              </div>
-            </div>
-            <Badge className="bg-white/10 text-white border-white/20 backdrop-blur-md">Live Analyse</Badge>
-          </div>
-          <div className="grid grid-cols-3 gap-8">
-            <div className="space-y-2 group cursor-default">
-              <div className="text-[11px] text-blue-300 font-bold uppercase tracking-wider opacity-70">Akquise-Hebel</div>
-              <p className="text-[15px] font-medium leading-relaxed group-hover:text-blue-200 transition-colors">
-                "Die Neugründungen in Hannover sind heute heiß. 3 Malerbetriebe haben gerade erst eröffnet – perfekter Hook!"
-              </p>
-            </div>
-            <div className="space-y-2 border-x border-white/10 px-8 group cursor-default">
-              <div className="text-[11px] text-purple-300 font-bold uppercase tracking-wider opacity-70">Projekt-Turbo</div>
-              <p className="text-[15px] font-medium leading-relaxed group-hover:text-purple-200 transition-colors">
-                "Pavlić wartet auf das Design-Update. Schick es raus, um die Abschlusszahlung von 2.400€ zu triggern."
-              </p>
-            </div>
-            <div className="space-y-2 group cursor-default">
-              <div className="text-[11px] text-emerald-300 font-bold uppercase tracking-wider opacity-70">Finanz-Check</div>
-              <p className="text-[15px] font-medium leading-relaxed group-hover:text-emerald-200 transition-colors">
-                "Du hast 950€ an offenen Anzahlungen. Ein kurzer Check bei Sushi Sun sichert dir den Cashflow für das Wochenende."
-              </p>
-            </div>
+            )}
           </div>
         </div>
-      </Card>
-    </section>
+
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[#eff5ff] text-[var(--color-copper-600)]">
+            <Clock className="h-3.5 w-3.5" />
+          </span>
+          <div className="text-[12.5px] text-[var(--color-fg)]">
+            {data.callStats.total} Anrufe protokolliert ·{" "}
+            <span className="text-[var(--color-fg-mute)]">
+              {data.callStats.connectRate}% erreicht
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-1 border-t border-[var(--color-hairline)] px-3 py-3">
+        <GlanceLink href="/termine" icon={Calendar} label="Termine & Erinnerungen" />
+        <GlanceLink href="/finances" icon={FileText} label="Angebote & Rechnungen" />
+        <GlanceLink href="/scrape" icon={Radio} label="Neue Leads scrapen" />
+      </div>
+    </Card>
+  );
+}
+
+function GlanceLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-2 text-[12.5px] font-medium text-[var(--color-fg-dim)] transition-colors hover:bg-black/[0.04]"
+    >
+      <Icon className="h-[15px] w-[15px] text-[var(--color-fg-mute)]" />
+      <span className="flex-1">{label}</span>
+      <ArrowRight className="h-3.5 w-3.5 text-[var(--color-fg-mute)]" />
+    </a>
+  );
+}
+
+function CallStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="px-5 py-4">
+      <div className="text-[10.5px] uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+        {label}
+      </div>
+      <div className="text-mono mt-2 text-[24px] font-semibold leading-none tabular text-[var(--color-fg)]">
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-1.5 text-[11.5px] text-[var(--color-fg-mute)]">{hint}</div>
+      )}
+    </div>
   );
 }
 

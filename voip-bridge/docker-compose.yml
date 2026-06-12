@@ -1,0 +1,22 @@
+# AW Digital OS — Asterisk WebRTC↔SIP-Brücke
+# Start:  docker compose up -d
+# Logs:   docker compose logs -f
+# Konsole: docker compose exec asterisk asterisk -rvvv
+#
+# network_mode: host ist auf einem Linux-VPS der einfachste Weg, damit RTP
+# (Sprache) sauber durchläuft — kein Port-Mapping-Theater.
+services:
+  asterisk:
+    image: andrius/asterisk:latest
+    container_name: aw-voip-bridge
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      # Unsere Konfig:
+      - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./asterisk/http.conf:/etc/asterisk/http.conf:ro
+      - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+      # Let's-Encrypt-Zertifikate (siehe README, Schritt 3):
+      - /etc/letsencrypt/live/CHANGE_ME_DOMAIN/fullchain.pem:/etc/asterisk/keys/fullchain.pem:ro
+      - /etc/letsencrypt/live/CHANGE_ME_DOMAIN/privkey.pem:/etc/asterisk/keys/privkey.pem:ro

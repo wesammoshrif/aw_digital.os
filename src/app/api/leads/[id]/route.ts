@@ -54,6 +54,30 @@ export async function PATCH(
     }
 
     await db.update(leads).set(patch).where(eq(leads.id, id));
+
+    // Abschluss-Automatik: Lead auf "won" → automatisch ein Projekt anlegen,
+    // falls noch keines für diesen Lead existiert. Darf das Status-Update
+    // niemals scheitern lassen (defensiv).
+    if (body.status === "won") {
+      try {
+        const { getProjectByLeadId, createProject } = await import("@/lib/store");
+        const existing = await getProjectByLeadId(id);
+        if (!existing) {
+          const [lead] = await db
+            .select({ company: leads.company })
+            .from(leads)
+            .where(eq(leads.id, id));
+          await createProject({
+            leadId: id,
+            name: `Website ${lead?.company ?? ""}`.trim(),
+            status: "planning",
+          });
+        }
+      } catch {
+        // Projekt-Anlage ist optional – Fehler bewusst verschlucken.
+      }
+    }
+
     return NextResponse.json({ ok: true, id });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });

@@ -27,10 +27,14 @@ dem Supabase-Anschluss noch offen ist. Mock-Modus ist aktiv, solange keine
 1. **`tel:`-Link** (Lead-Seite) → easybell-Desktop-App / Systemtelefon übernimmt. Zuverlässig.
 2. **WebRTC-Softphone** (im Souffleur-Popup, `SipDialer` + jssip) → In-Browser-Anruf, Remote-Audio geht direkt an Deepgram.
 
-**⚠️ Montag live zu testen (geht nur auf deinem Rechner + Konto):**
-- WebRTC-Registrierung gegen `wss://webrtc.easybell.de:7443` — der Port ist **nicht** offiziell dokumentiert und unbestätigt.
-- WebRTC braucht ggf. das Produkt **Cloud Telefonanlage** (`pbx.easybell.de`); aktueller Registrar ist `voip.easybell.de` (SIP-Trunk). easybell-Produkt im Portal prüfen.
-- Wenn WebRTC nicht registriert → `tel:`-Weg nutzen.
+**WebRTC-WSS verifiziert 12.06.2026 — kein nutzbarer Endpoint:**
+- `wss://webrtc.easybell.de:7443` → Port **zu**.
+- `wss://webrtc.easybell.de:443/` → HTTP **200** (nur nginx-Begrüßungsseite, kein WS-Upgrade).
+- `wss://webrtc.easybell.de:443/ws` → **404**.
+- `wss://voip.easybell.de` → spricht kein WSS (reines SIP).
+- easybell-Doku nennt **keinen** Browser-WebRTC/WSS-Endpoint für SIP-Trunks (nur App + Zoiper + Cloud Telefonanlage).
+
+**Konsequenz:** Browser-WebRTC funktioniert mit dem SIP-Trunk nicht. **`tel:`-Link ist der Arbeitsweg** (öffnet die easybell-Desktop-App, die gegen den Trunk registriert ist). Der Browser-Dialer im Souffleur ist auf „experimentell" zurückgestuft (kein Auto-Fehler mehr). In-Browser-Telefonie nur möglich, wenn easybell-Support ein WSS-Gateway der Cloud Telefonanlage (`pbx.easybell.de`) liefert.
 
 ---
 

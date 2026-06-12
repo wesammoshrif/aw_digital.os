@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Phone,
   PhoneOff,
+  PhoneCall,
   PhoneMissed,
   Voicemail,
   Calendar,
@@ -112,6 +113,17 @@ export function CallMode({
           }),
         });
 
+        // 3. Anruf protokollieren (Statistik & Gedächtnis) — Mock-No-Op
+        await fetch(`/api/calls`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leadId: lead.id,
+            dispo,
+            transcript: note.trim() || null,
+          }),
+        }).catch(() => {});
+
         setLastDispo(`${label} → ${cad.nextStep}`);
         setActive(false);
         // Souffleur-Popup schließen — sonst läuft das Mikro weiter zwischen den Calls
@@ -180,55 +192,92 @@ export function CallMode({
             )}
           </div>
 
-          <div className="flex flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (active) {
-                  setActive(false);
-                  return;
-                }
-                setActive(true);
-                setPopupBlocked(false);
-                // 1. Souffleur-Popup öffnen (Mikro + Deepgram laufen automatisch los)
-                const win = window.open(
-                  `/souffleur/${lead.id}`,
-                  "souffleur",
-                  "width=780,height=740,menubar=no,toolbar=no,location=no,status=no",
-                );
+          <div className="flex flex-col items-end gap-2.5">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (active) {
+                    setActive(false);
+                    try {
+                      popupRef.current?.close();
+                    } catch {}
+                    popupRef.current = null;
+                    return;
+                  }
+                  setActive(true);
+                  setPopupBlocked(false);
+                  const win = window.open(
+                    `/souffleur/${lead.id}?autocall=1`,
+                    "souffleur",
+                    "width=780,height=740,menubar=no,toolbar=no,location=no,status=no",
+                  );
+                  if (!win || win.closed) {
+                    setPopupBlocked(true);
+                  } else {
+                    popupRef.current = win;
+                  }
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-5 py-3 text-[14px] font-bold transition shadow-sm",
+                  active
+                    ? "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"
+                    : "bg-[#007aff] text-white hover:bg-[#0062cc]",
+                )}
+              >
+                {active ? (
+                  <>
+                    <PhoneOff className="h-4 w-4" />
+                    Stopp
+                  </>
+                ) : (
+                  <>
+                    <PhoneCall className="h-4 w-4" />
+                    Direkt (Browser)
+                  </>
+                )}
+              </button>
 
-                if (!win || win.closed || typeof win.closed === 'undefined') {
-                  setPopupBlocked(true);
-                } else {
-                  popupRef.current = win;
-                }
-
-                // 2. easybell anrufen lassen (REST API bevorzugt, sonst tel:-Link Fallback)
-                initiateSystemCall();
-              }}
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-[15px] font-semibold transition",
-                active
-                  ? "bg-[#fef2f2] text-[#dc2626] border border-[#fecaca]"
-                  : "bg-[var(--color-copper-500)] text-white shadow-[0_6px_20px_-4px_rgba(37,99,235,0.5)] hover:bg-[var(--color-copper-600)]",
-              )}
-            >
-              {active ? (
-                <>
-                  <PhoneOff className="h-4 w-4" />
-                  Auflegen
-                </>
-              ) : (
-                <>
-                  <Phone className="h-4 w-4" />
-                  Anrufen + Souffleur
-                </>
-              )}
-            </button>
-            <p className="max-w-[14ch] text-right text-[10.5px] leading-tight text-[var(--color-fg-mute)]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (active) {
+                    setActive(false);
+                    try {
+                      popupRef.current?.close();
+                    } catch {}
+                    popupRef.current = null;
+                    return;
+                  }
+                  setActive(true);
+                  setPopupBlocked(false);
+                  const win = window.open(
+                    `/souffleur/${lead.id}`,
+                    "souffleur",
+                    "width=780,height=740,menubar=no,toolbar=no,location=no,status=no",
+                  );
+                  if (!win || win.closed) {
+                    setPopupBlocked(true);
+                  } else {
+                    popupRef.current = win;
+                  }
+                  initiateSystemCall();
+                }}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-full px-5 py-3 text-[14px] font-semibold transition border",
+                  active
+                    ? "hidden"
+                    : "bg-white text-[var(--color-fg)] border-[var(--color-hairline)] hover:bg-[var(--color-surface-2)]",
+                )}
+              >
+                <Phone className="h-4 w-4" />
+                App / Tel
+              </button>
+            </div>
+            <p className="max-w-[20ch] text-right text-[10.5px] leading-tight text-[var(--color-fg-mute)]">
               {active
                 ? "Souffleur läuft im Popup"
-                : "easybell wählt · Souffleur startet"}
+                : "Wähle die Methode: Browser-Direktruf oder externe App."}
             </p>
             <Link
               href="/settings/telefonie"

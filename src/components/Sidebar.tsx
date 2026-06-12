@@ -13,12 +13,14 @@ import {
   Briefcase,
   Euro,
   CalendarClock,
+  Radar,
 } from "lucide-react";
 import { Logo } from "./ui/Logo";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Heute", icon: Phone },
+  { href: "/leads/finder", label: "Leads finden", icon: Radar },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: LayoutGrid },
   { href: "/projects", label: "Projekte", icon: Briefcase },

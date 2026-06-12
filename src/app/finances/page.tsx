@@ -68,10 +68,10 @@ export default async function FinancesPage() {
       eyebrow="Angebote & Rechnungen"
       actions={
         <>
-          <ButtonLink href="/finances" variant="ghost" size="sm">
+          <ButtonLink href="/finances/new?kind=quote" variant="ghost" size="sm">
             <FileText className="h-3.5 w-3.5" /> Neues Angebot
           </ButtonLink>
-          <ButtonLink href="/finances" variant="primary" size="sm">
+          <ButtonLink href="/finances/new?kind=invoice" variant="primary" size="sm">
             <Receipt className="h-3.5 w-3.5" /> Neue Rechnung
           </ButtonLink>
         </>

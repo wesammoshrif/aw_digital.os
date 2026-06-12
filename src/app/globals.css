@@ -175,18 +175,6 @@ body {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
 }
 
-@keyframes gemini-gradient {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
-.gemini-card {
-  background: linear-gradient(-45deg, #1e293b, #0f172a, #1e1b4b, #312e81);
-  background-size: 400% 400%;
-  animation: gemini-gradient 15s ease infinite;
-}
-
 .hover-lift {
   transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1);
 }

@@ -50,6 +50,7 @@ export class EasybellSipClient {
   private session: RTCSession | null = null;
   private listeners: Partial<SipEvents> = {};
   private remoteAudioEl: HTMLAudioElement | null = null;
+  private cfg: SipConfig | null = null;
 
   on<K extends keyof SipEvents>(ev: K, cb: SipEvents[K]) {
     this.listeners[ev] = cb;
@@ -66,6 +67,7 @@ export class EasybellSipClient {
   }
 
   async connect(cfg: SipConfig): Promise<void> {
+    this.cfg = cfg;
     // JsSIP nur clientseitig importieren (window-abhängig)
     const mod = await import("jssip");
     const JsSIP = (mod as { default?: unknown }).default ?? mod;
@@ -115,7 +117,10 @@ export class EasybellSipClient {
       : digits.startsWith("0") && !digits.startsWith("00")
         ? digits // 0163... bleibt national
         : digits;
-    const target = `sip:${e164}@voip.easybell.de`;
+    // Gegen die konfigurierte Domain wählen: bei der Asterisk-Brücke ist das
+    // die VPS-Domain (Asterisk routet dann raus über den easybell-Trunk).
+    const domain = this.cfg?.registrar || "voip.easybell.de";
+    const target = `sip:${e164}@${domain}`;
     // eslint-disable-next-line no-console
     console.log("[SIP] dialing", target);
 

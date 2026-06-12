@@ -44,6 +44,8 @@ next-env.d.ts
 
 # Claude Code / lokale Tooling
 .claude/
+# MCP-Config enthält den Supabase-Access-Token → niemals committen
+.mcp.json
 
 # graphify: teilbare Outputs rein, maschinenspezifischen Kram raus
 graphify-out/.graphify_python

@@ -44,11 +44,19 @@ const DISPOS = [
   { key: "appointment", label: "Termin!", tone: "success" },
   { key: "callback", label: "Rückruf", tone: "neutral" },
   { key: "voicemail", label: "Mailbox", tone: "neutral" },
+  { key: "busy", label: "Besetzt", tone: "neutral" },
   { key: "no_answer", label: "Nicht erreicht", tone: "neutral" },
   { key: "not_interested", label: "Kein Interesse", tone: "danger" },
+  { key: "wrong_number", label: "Falsche Nr.", tone: "danger" },
 ] as const;
 
-export function SouffleurRoom({ lead }: { lead: Lead }) {
+export function SouffleurRoom({ 
+  lead,
+  autoDial = false,
+}: { 
+  lead: Lead;
+  autoDial?: boolean;
+}) {
   const [move, setMove] = useState<Move>(() => getMove("opener")!);
   const [detected, setDetected] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
@@ -192,7 +200,6 @@ export function SouffleurRoom({ lead }: { lead: Lead }) {
         return;
       }
       const ws = new WebSocket(
-        // --- MODIFIED BY ASSISTANT: Using nova-2 for broader compatibility ---
         "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
         // --- END MODIFIED ---
         ["token", tok.token],
@@ -384,8 +391,7 @@ export function SouffleurRoom({ lead }: { lead: Lead }) {
           return;
         }
         const ws = new WebSocket(
-          // --- MODIFIED BY ASSISTANT: Using nova-2 for broader compatibility ---
-          "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
+            "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
           // --- END MODIFIED ---
           ["token", tok.token],
         );
@@ -483,7 +489,7 @@ export function SouffleurRoom({ lead }: { lead: Lead }) {
               resolve("error");
             }, 5000);
             const ws = new WebSocket(
-              "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&smart_format=true&punctuate=true",
+              "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
               ["token", tok.token],
             );
             dgWsRef.current = ws;
@@ -969,6 +975,7 @@ export function SouffleurRoom({ lead }: { lead: Lead }) {
         <div className="mt-3">
           <SipDialer
             defaultNumber={lead.phone ?? ""}
+            autoDial={autoDial}
             onRemoteStream={(stream) => handleSipRemoteStream(stream)}
           />
         </div>

@@ -16,6 +16,8 @@ import {
   mockAppointments,
   mockProjects,
   mockInvoices,
+  mockTasks,
+  mockCalls,
   pipelineStats,
   callsThisWeek,
   STREAK,
@@ -59,6 +61,85 @@ export async function getProjectByLeadId(leadId: string) {
   const { eq } = await import("drizzle-orm");
   const [row] = await db.select().from(projects).where(eq(projects.leadId, leadId)).limit(1);
   return row ?? null;
+}
+
+export async function getProject(id: string) {
+  if (isMockMode) return mockProjects.find((p) => p.id === id) ?? null;
+  const { db } = await import("@/db");
+  const { projects } = await import("@/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const [row] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  return row ?? null;
+}
+
+export async function createProject(input: {
+  leadId: string;
+  name: string;
+  status?: string;
+  description?: string;
+}): Promise<{ id: string } | null> {
+  // Im Mock-Modus existiert keine DB → kein Insert möglich.
+  if (isMockMode) return null;
+  try {
+    const { db } = await import("@/db");
+    const { projects } = await import("@/db/schema");
+    const [row] = await db
+      .insert(projects)
+      .values({
+        ownerId: OWNER_ID,
+        leadId: input.leadId,
+        name: input.name,
+        status: (input.status ?? "planning") as never,
+        description: input.description ?? null,
+      })
+      .returning({ id: projects.id });
+    return row ? { id: row.id } : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function listTasks(projectId: string) {
+  if (isMockMode)
+    return mockTasks
+      .filter((t) => t.projectId === projectId)
+      .sort((a, b) => (a.dueDate?.getTime() ?? 0) - (b.dueDate?.getTime() ?? 0));
+  const { db } = await import("@/db");
+  const { tasks } = await import("@/db/schema");
+  const { eq, asc } = await import("drizzle-orm");
+  return db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.projectId, projectId))
+    .orderBy(asc(tasks.dueDate));
+}
+
+// ── Anrufe & Statistik ───────────────────────────────────────────
+export async function listCalls() {
+  if (isMockMode)
+    return [...mockCalls].sort(
+      (a, b) => b.startedAt.getTime() - a.startedAt.getTime(),
+    );
+  const { db } = await import("@/db");
+  const { calls } = await import("@/db/schema");
+  const { eq, desc } = await import("drizzle-orm");
+  return db
+    .select()
+    .from(calls)
+    .where(eq(calls.ownerId, OWNER_ID))
+    .orderBy(desc(calls.startedAt));
+}
+
+export async function callStats() {
+  const calls = await listCalls();
+  const total = calls.length;
+  const connected = calls.filter((c) => (c.durationSec ?? 0) > 0).length;
+  const appointments = calls.filter((c) => c.dispo === "appointment").length;
+  const interested = calls.filter((c) => c.dispo === "interested").length;
+  const totalDuration = calls.reduce((s, c) => s + (c.durationSec ?? 0), 0);
+  const avgDuration = connected ? Math.round(totalDuration / connected) : 0;
+  const connectRate = total ? Math.round((connected / total) * 100) : 0;
+  return { total, connected, connectRate, appointments, interested, avgDuration };
 }
 
 
@@ -267,6 +348,8 @@ export async function dashboardSummary() {
     })
     .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
 
+  const stats = await callStats();
+
   return {
     queue: dueToday.slice(0, 12),
     total: all.length,
@@ -280,5 +363,6 @@ export async function dashboardSummary() {
     nextAppt,
     activeProjects,
     revenueThisMonth,
+    callStats: stats,
   };
 }

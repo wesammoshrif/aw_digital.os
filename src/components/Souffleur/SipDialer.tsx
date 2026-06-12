@@ -10,7 +10,6 @@ import {
   Info,
 } from "lucide-react";
 import { EasybellSipClient, type SipStatus } from "@/lib/sip/client";
-import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 
 /**
@@ -23,21 +22,30 @@ export function SipDialer({
   defaultNumber,
   onRemoteStream,
   onStatus,
+  autoDial = false,
 }: {
   defaultNumber?: string;
   onRemoteStream?: (stream: MediaStream | null) => void;
   onStatus?: (status: SipStatus) => void;
+  autoDial?: boolean;
 }) {
   const [number, setNumber] = useState(defaultNumber ?? "");
   const [status, setStatus] = useState<SipStatus>("idle");
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
-  const [showExperimental, setShowExperimental] = useState(false);
+  const [showExperimental, setShowExperimental] = useState(autoDial);
   const clientRef = useRef<EasybellSipClient | null>(null);
 
   useEffect(() => {
     if (defaultNumber) setNumber(defaultNumber);
   }, [defaultNumber]);
+
+  useEffect(() => {
+    if (autoDial && defaultNumber && status === "idle") {
+      dialBrowser();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoDial, defaultNumber]);
 
   useEffect(() => {
     return () => {
@@ -101,8 +109,8 @@ export function SipDialer({
         </span>
       </div>
 
-      {/* ── Browser-Direktanruf (In-App) ─────────────────────────── */}
-      <div className="mb-4 space-y-3">
+      {/* ── Hauptweg: tel: → easybell-App / Telefon ──────────────── */}
+      <div className="mb-3 space-y-2">
         <div className="flex items-center gap-2">
           <Phone className="ml-1.5 h-3.5 w-3.5 text-[var(--color-fg-mute)]" />
           <input
@@ -111,52 +119,27 @@ export function SipDialer({
             placeholder="+49 152 12345678"
             className="flex-1 bg-transparent px-1 text-[14px] font-medium text-[var(--color-fg)] outline-none placeholder:text-[var(--color-fg-mute)]"
           />
-          {active ? (
-            <button
-              onClick={hangup}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[#ffeceb] px-4 py-2 text-[12px] font-semibold text-[#d70015] hover:bg-[#ffd1cf] transition"
-            >
-              <PhoneOff className="h-3.5 w-3.5" /> Auflegen
-            </button>
-          ) : (
-            <button
-              onClick={dialBrowser}
-              disabled={!number.trim() || connecting}
-              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-copper-500)] px-4 py-2 text-[12px] font-semibold text-white shadow-copper hover:bg-[#0077ed] disabled:opacity-50 transition"
-            >
-              {connecting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Phone className="h-3.5 w-3.5" />
-              )}
-              {connecting ? "Verbinde…" : "Anrufen"}
-            </button>
-          )}
-        </div>
-
-        {statusMsg && (
-          <div
+          <a
+            href={telHref}
             className={cn(
-              "flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed",
-              status === "error"
-                ? "bg-[#fff0ef] text-[#a40012] border border-[#fecaca]"
-                : "bg-white/50 text-[var(--color-fg-mute)] border border-[var(--color-hairline)]",
+              "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-semibold text-white shadow-copper transition",
+              number.trim()
+                ? "bg-[var(--color-copper-500)] hover:bg-[#0077ed]"
+                : "pointer-events-none bg-[var(--color-copper-500)]/40",
             )}
           >
-            <Info className="h-3.5 w-3.5 shrink-0" />
-            <span>{statusMsg}</span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between px-1.5">
-          <StatusPill status={status} />
-          <Badge variant="copper" className="text-[9px] py-0 px-1.5 opacity-70">Browser-SIP</Badge>
+            <Phone className="h-3.5 w-3.5" /> Anrufen
+          </a>
         </div>
+        <p className="px-1.5 text-[10.5px] leading-snug text-[var(--color-fg-mute)]">
+          Öffnet dein Telefon bzw. die easybell-App. Die Kundenstimme für den
+          Souffleur kommt über die System-Audio-Freigabe (oben).
+        </p>
       </div>
 
       <div className="hairline mb-3 opacity-30" />
 
-      {/* ── Fallback: easybell-App ─────────────────────────────────── */}
+      {/* ── Experimentell: Browser-Direktanruf (braucht WSS-Gateway) ── */}
       <button
         onClick={() => setShowExperimental((s) => !s)}
         className="flex w-full items-center justify-between text-[11px] font-medium text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)] transition"
@@ -168,21 +151,58 @@ export function SipDialer({
               showExperimental && "rotate-180",
             )}
           />
-          Andere Optionen (Desktop-App)
+          Browser-Direktanruf (experimentell)
         </span>
       </button>
 
       {showExperimental && (
         <div className="mt-3 space-y-3 pt-1">
-          <div className="flex items-center justify-between gap-2 rounded-xl bg-white/40 p-2.5 border border-white/60">
-            <span className="text-[11px] text-[var(--color-fg-mute)]">Externe App nutzen:</span>
-            <a
-              href={telHref}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-surface-3)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-fg)] hover:bg-[var(--color-hairline)] transition"
-            >
-              Desktop-App öffnen
-            </a>
+          <div className="flex items-start gap-2 rounded-lg border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[10.5px] leading-relaxed text-[#92400e]">
+            <Info className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              In-Browser-Telefonie braucht ein erreichbares easybell-WSS-Gateway
+              (Cloud Telefonanlage). Mit dem reinen SIP-Trunk schlägt die
+              WebSocket-Verbindung fehl — nutz dafür den „Anrufen"-Button oben.
+            </span>
           </div>
+          <div className="flex items-center gap-2">
+            {active ? (
+              <button
+                onClick={hangup}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#ffeceb] px-4 py-2 text-[12px] font-semibold text-[#d70015] hover:bg-[#ffd1cf] transition"
+              >
+                <PhoneOff className="h-3.5 w-3.5" /> Auflegen
+              </button>
+            ) : (
+              <button
+                onClick={dialBrowser}
+                disabled={!number.trim() || connecting}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-surface-3)] px-4 py-2 text-[12px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-hairline)] disabled:opacity-50 transition"
+              >
+                {connecting ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Phone className="h-3.5 w-3.5" />
+                )}
+                {connecting ? "Verbinde…" : "Trotzdem testen"}
+              </button>
+            )}
+            <StatusPill status={status} />
+          </div>
+
+          {statusMsg && (
+            <div
+              className={cn(
+                "flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed",
+                status === "error"
+                  ? "bg-[#fff0ef] text-[#a40012] border border-[#fecaca]"
+                  : "bg-white/50 text-[var(--color-fg-mute)] border border-[var(--color-hairline)]",
+              )}
+            >
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              <span>{statusMsg}</span>
+            </div>
+          )}
         </div>
       )}
     </div>
