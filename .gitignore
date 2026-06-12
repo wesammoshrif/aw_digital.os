@@ -42,7 +42,12 @@ next-env.d.ts
 
 # Claude Code / lokale Tooling
 .claude/
-graphify-out/
+
+# graphify: teilbare Outputs rein, maschinenspezifischen Kram raus
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/manifest.json
+graphify-out/cache/
 
 # Scratch-/Verify-Dateien
 _verify_matcher.mjs
