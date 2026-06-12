@@ -754,9 +754,19 @@ export function SouffleurRoom({
 
       {/* ── Großer Tipp ─────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        <div className="rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 ring-black/[0.04]">
+        <div
+          className={cn(
+            "rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500",
+            aiLine
+              ? "ring-[var(--color-copper-200)] shadow-[var(--shadow-copper)]"
+              : "ring-black/[0.04]",
+          )}
+        >
           <div className="flex items-center gap-2">
-            <span className="rounded-full bg-[#e9f2fe] px-2 py-0.5 text-[11px] font-medium text-[var(--color-copper-700)]">
+            {aiLine && (
+              <span className="breathe h-2 w-2 shrink-0 rounded-full bg-[var(--color-copper-500)]" />
+            )}
+            <span className="rounded-full bg-[#e9f2fe] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-copper-700)]">
               {aiLine ? "KI-Tipp" : KIND_LABEL[move.kind]}
             </span>
             {detected && !aiLine && (
@@ -780,7 +790,10 @@ export function SouffleurRoom({
             </button>
           </div>
 
-          <p className="mt-3 text-[26px] font-semibold leading-[1.25] tracking-[-0.01em] text-[var(--color-fg)]">
+          <p
+            key={aiLine ?? hookLine}
+            className="tip-enter mt-3 text-[27px] font-semibold leading-[1.22] tracking-[-0.022em] text-[var(--color-fg)]"
+          >
             {aiLine ?? hookLine}
           </p>
 
@@ -1008,10 +1021,54 @@ export function SouffleurRoom({
           </div>
         </div>
 
+        {/* ── Redeanteil-Puls ──────────────────────────────────── */}
+        {(transcript.trim() || customerTranscript.trim()) &&
+          (() => {
+            const a = transcript.trim().length;
+            const b = customerTranscript.trim().length;
+            const total = a + b || 1;
+            const repShare = Math.round((a / total) * 100);
+            const tooMuch = repShare > 65;
+            return (
+              <div className="mt-5">
+                <div className="mb-1.5 flex items-center justify-between text-[10.5px] font-medium uppercase tracking-[0.06em]">
+                  <span className="text-[var(--color-fg-mute)]">Redeanteil</span>
+                  <span
+                    className={cn(
+                      "tabular",
+                      tooMuch
+                        ? "text-[var(--color-copper-600)]"
+                        : "text-[var(--color-fg-mute)]",
+                    )}
+                  >
+                    Du {repShare}% · Kunde {100 - repShare}%
+                  </span>
+                </div>
+                <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-500",
+                      tooMuch
+                        ? "bg-[var(--color-copper-500)]"
+                        : "bg-[var(--color-copper-300)]",
+                    )}
+                    style={{ width: `${repShare}%` }}
+                  />
+                </div>
+                {tooMuch && (
+                  <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--color-copper-600)]">
+                    <span className="breathe h-1.5 w-1.5 rounded-full bg-[var(--color-copper-500)]" />
+                    Lass ihn reden — stell eine Frage.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
         {/* ── Transkripte: Du | Kunde ───────────────────────────── */}
-        <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3">
           {/* Du (Mikro via Deepgram) */}
-          <div className="rounded-[14px] bg-[var(--color-surface-2)] p-4">
+          <div className="rounded-[14px] border-l-[3px] border-[var(--color-fg-mute)]/25 bg-[var(--color-surface-2)] p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
                 Du · Mikro
@@ -1054,7 +1111,7 @@ export function SouffleurRoom({
           </div>
 
           {/* Kunde (PC-Ton via Deepgram) */}
-          <div className="rounded-[14px] bg-[var(--color-surface-2)] p-4">
+          <div className="rounded-[14px] border-l-[3px] border-[var(--color-copper-400)] bg-[var(--color-copper-50)]/30 p-4">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
                 Kunde · PC-Ton

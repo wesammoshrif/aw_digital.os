@@ -191,3 +191,37 @@ body {
 .animate-float {
   animation: float 3s ease-in-out infinite;
 }
+
+/* ── Souffleur: „Ein-Atemzug-Tipp" — sanftes Erscheinen ohne Layout-Shift ── */
+@keyframes tip-enter {
+  from { opacity: 0; transform: translateY(6px); filter: blur(1.5px); }
+  to   { opacity: 1; transform: none;          filter: none; }
+}
+.tip-enter { animation: tip-enter 420ms var(--ease-out) both; }
+
+/* Atmender Live-Punkt / Redeanteil-Puls */
+@keyframes breathe {
+  0%, 100% { opacity: 0.45; transform: scale(1); }
+  50%      { opacity: 1;    transform: scale(1.25); }
+}
+.breathe { animation: breathe 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tip-enter, .breathe, .animate-float { animation: none !important; }
+}
+
+/* Skeleton-Shimmer statt Spinner */
+@keyframes shimmer {
+  0%   { background-position: -468px 0; }
+  100% { background-position:  468px 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    var(--color-surface-3) 37%,
+    var(--color-surface-2) 63%
+  );
+  background-size: 936px 100%;
+  animation: shimmer 1.5s linear infinite;
+}

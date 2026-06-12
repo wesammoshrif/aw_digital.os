@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { TargetRing, WeekSparkline } from "@/components/TargetRing";
 import { QueueItem } from "@/components/QueueItem";
+import { CountUp } from "@/components/CountUp";
 import { dashboardSummary, isMockMode } from "@/lib/store";
 import { Phone, Calendar, TrendingUp, ArrowRight, Euro, Clock, FileText, Radio } from "lucide-react";
 
@@ -50,8 +51,8 @@ export default async function HomePage() {
             <div className="text-[12.5px] font-medium text-[var(--color-fg-mute)]">
               Tagesziel
             </div>
-            <h2 className="mt-1 text-[26px] font-semibold leading-tight tracking-tight text-[var(--color-fg)]">
-              Noch {remaining} Anrufe.
+            <h2 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.02em] text-[var(--color-fg)]">
+              Noch <CountUp value={remaining} /> Anrufe.
             </h2>
             <p className="mt-2 max-w-[34ch] text-[13.5px] leading-relaxed text-[var(--color-fg-dim)]">
               Du bist seit {data.streak.current} Tagen dran — Rekord ist{" "}
@@ -87,13 +88,13 @@ export default async function HomePage() {
         <Kpi
           icon={Phone}
           label="Leads gesamt"
-          value={String(data.total)}
+          num={data.total}
           hint={`${data.proposalCount} im Angebot`}
         />
         <Kpi
           icon={Calendar}
           label="Termine offen"
-          value={String(data.upcomingAppointments)}
+          num={data.upcomingAppointments}
           hint={
             data.nextAppt
               ? data.nextAppt.startsAt.toLocaleDateString("de-DE", {
@@ -110,13 +111,15 @@ export default async function HomePage() {
         <Kpi
           icon={TrendingUp}
           label="Wartungs-MRR"
-          value={`${data.mrr.toFixed(0)} €`}
+          num={data.mrr}
+          numSuffix=" €"
           hint={`${data.won} Bestandskunden`}
         />
         <Kpi
           icon={Euro}
           label="Umsatz (lfd. Monat)"
-          value={`${data.revenueThisMonth.toFixed(0)} €`}
+          num={data.revenueThisMonth}
+          numSuffix=" €"
           hint="Bezahlte Rechnungen"
         />
       </section>
@@ -124,10 +127,11 @@ export default async function HomePage() {
       {/* ── Anruf-Statistik ────────────────────────────────────────── */}
       <section className="mb-8">
         <Card className="grid grid-cols-4 divide-x divide-[var(--color-hairline)] p-0">
-          <CallStat label="Anrufe" value={String(data.callStats.total)} hint="protokolliert" />
+          <CallStat label="Anrufe" num={data.callStats.total} hint="protokolliert" />
           <CallStat
             label="Connect-Rate"
-            value={`${data.callStats.connectRate} %`}
+            num={data.callStats.connectRate}
+            numSuffix=" %"
             hint={`${data.callStats.connected} erreicht`}
           />
           <CallStat
@@ -325,10 +329,14 @@ function GlanceLink({
 function CallStat({
   label,
   value,
+  num,
+  numSuffix,
   hint,
 }: {
   label: string;
-  value: string;
+  value?: string;
+  num?: number;
+  numSuffix?: string;
   hint?: string;
 }) {
   return (
@@ -337,7 +345,7 @@ function CallStat({
         {label}
       </div>
       <div className="text-mono mt-2 text-[24px] font-semibold leading-none tabular text-[var(--color-fg)]">
-        {value}
+        {num !== undefined ? <CountUp value={num} suffix={numSuffix} /> : value}
       </div>
       {hint && (
         <div className="mt-1.5 text-[11.5px] text-[var(--color-fg-mute)]">{hint}</div>
@@ -350,12 +358,16 @@ function Kpi({
   icon: Icon,
   label,
   value,
+  num,
+  numSuffix,
   hint,
   trend,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  value: string;
+  value?: string;
+  num?: number;
+  numSuffix?: string;
   hint?: string;
   trend?: string;
 }) {
@@ -374,8 +386,8 @@ function Kpi({
           </span>
         )}
       </div>
-      <div className="text-mono mt-3 text-[30px] font-semibold leading-none tracking-tight tabular text-[var(--color-fg)]">
-        {value}
+      <div className="text-mono mt-3 text-[31px] font-semibold leading-none tracking-[-0.02em] tabular text-[var(--color-fg)]">
+        {num !== undefined ? <CountUp value={num} suffix={numSuffix} /> : value}
       </div>
       {hint && (
         <div className="mt-2 text-[12px] text-[var(--color-fg-mute)]">{hint}</div>

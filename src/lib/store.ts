@@ -350,6 +350,34 @@ export async function dashboardSummary() {
 
   const stats = await callStats();
 
+  // Streak: im Mock aus Konstanten, im DB-Modus aus settings (mit Lesefehler-Fallback).
+  let streak = STREAK;
+  if (!isMockMode) {
+    try {
+      const { db } = await import("@/db");
+      const { settings } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+      const [s] = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.ownerId, OWNER_ID))
+        .limit(1);
+      const todayStr = now.toISOString().slice(0, 10);
+      const callsToday = await listCalls();
+      const todayProgress = callsToday.filter(
+        (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === todayStr,
+      ).length;
+      streak = {
+        current: s?.streakDays ?? 0,
+        record: s?.streakRecord ?? 0,
+        todayProgress,
+        todayTarget: 25,
+      };
+    } catch {
+      streak = { current: 0, record: 0, todayProgress: 0, todayTarget: 25 };
+    }
+  }
+
   return {
     queue: dueToday.slice(0, 12),
     total: all.length,
@@ -358,7 +386,7 @@ export async function dashboardSummary() {
     mrr,
     pipeline,
     weeklyCalls: callsThisWeek(),
-    streak: isMockMode ? STREAK : { current: 0, record: 0, todayProgress: 0, todayTarget: 25 },
+    streak,
     upcomingAppointments: upcoming.length,
     nextAppt,
     activeProjects,
