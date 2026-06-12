@@ -1,6 +1,26 @@
 # AW Digital OS — Status-Bericht
 
-_Stand: 12.06.2026 · Go-Live geplant So 14.06., erster Call-Tag Mo 15.06._
+_Stand: 13.06.2026 · Go-Live geplant So 14.06., erster Call-Tag Mo 15.06._
+
+## Production-Go-Live-Checkliste
+
+**✅ Erledigt:**
+- Supabase verbunden (Session-Pooler), Schema migriert (`drizzle/`)
+- **DB production-clean** — alle Demo/Mock-Daten gelöscht (`npm run db:clear`). App rendert leer + sauber.
+- Build grün, App läuft im DB-Modus.
+
+**📋 Vor dem Online-Gehen noch offen (brauchen Entscheidung/Account):**
+- [ ] **Echte Leads laden** — über `/leads/finder` (OSM live; Google-Maps-Key für mehr Telefonnummern) oder Import. _(Deine Aktion, Montag)_
+- [ ] **Auth/Login** — `middleware.ts` + Supabase-SSR, `OWNER_ID` aus Session statt Header. _Nur nötig fürs Online-Gehen; lokal/Single-User nicht zwingend._
+- [ ] **RLS-Policies** in Supabase (Mandantentrennung).
+- [ ] **Deployment** — Vercel (env vars + Cron). Braucht deinen Vercel-Account.
+- [ ] **Telefonie-Brücke** — Asterisk-VPS (`voip-bridge/`), wartet auf Server-IP.
+- [ ] Google-Maps-Key (`GOOGLE_PLACES_API_KEY`), Resend-Key für Reminder-Mails.
+
+**Für Montag (lokal) ist die App nutzbar:** Leads finden → anrufen (Zoiper-Trunk-Stopgap) → Souffleur → Pipeline. Auth/Deploy sind erst fürs Online-Gehen Pflicht.
+
+---
+
 
 Dieser Bericht hält fest, was **echt** funktioniert, was **Mock** ist und was vor
 dem Supabase-Anschluss noch offen ist. Mock-Modus ist aktiv, solange keine
