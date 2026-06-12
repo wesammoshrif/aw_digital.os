@@ -1,26 +1,205 @@
 @import "tailwindcss";
 
+/* ────────────────────────────────────────────────────────────────────
+   AW DIGITAL OS — Apple Human Interface design language
+   Reference: macOS Sonoma apps + iOS 17 + apple.com
+   - Typeface: SF Pro (system), Inter as the web fallback
+   - Accent: Apple system blue #0071e3
+   - Neutrals: #1d1d1f / #f5f5f7 / #d2d2d7 / #6e6e73
+   - Numbers in SF with tabular figures (NOT monospace)
+   Token names retained; "copper-*" now carries Apple blue.
+   ──────────────────────────────────────────────────────────────────── */
+
+@theme {
+  /* Surfaces */
+  --color-canvas: #ffffff;
+  --color-ink: #f5f5f7;       /* grouped / sidebar background */
+  --color-surface: #ffffff;
+  --color-surface-2: #f5f5f7;
+  --color-surface-3: #e8e8ed;
+  --color-hairline: #d2d2d7;  /* Apple separator */
+
+  /* Text — Apple grays */
+  --color-fg: #1d1d1f;
+  --color-fg-dim: #424245;
+  --color-fg-mute: #6e6e73;
+  --color-fg-faint: #86868b;
+
+  /* Accent — Apple system blue */
+  --color-copper-50: #e9f2fe;
+  --color-copper-100: #d2e4fd;
+  --color-copper-200: #a6c8fb;
+  --color-copper-300: #5fa0f6;
+  --color-copper-400: #2b8aef;
+  --color-copper-500: #0071e3; /* apple.com blue */
+  --color-copper-600: #0066cc;
+  --color-copper-700: #0055ab;
+  --color-copper-800: #e9f2fe; /* light tint chip bg */
+
+  /* Functional — iOS system colors */
+  --color-success: #34c759;
+  --color-warning: #ff9500;
+  --color-danger: #ff3b30;
+  --color-info: #0071e3;
+
+  /* Score palette — iOS */
+  --color-hot: #ff3b30;
+  --color-warm: #ff9500;
+  --color-cold: #8e8e93;
+
+  /* Type — SF Pro system stack, Inter web fallback */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "SF Pro Display", var(--font-inter), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "SFMono-Regular", Menlo,
+    var(--font-geist-mono), monospace;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    var(--font-inter), "Helvetica Neue", sans-serif;
+
+  /* Radii — Apple corners */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+
+  /* Motion — Apple spring-ish easing */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 140ms;
+  --duration: 240ms;
+  --duration-slow: 380ms;
+
+  /* Shadows — Apple-soft */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.06), 0 14px 32px -8px rgba(0, 0, 0, 0.1);
+  --shadow-3: 0 8px 24px rgba(0, 0, 0, 0.08), 0 28px 56px -16px rgba(0, 0, 0, 0.16);
+  --shadow-copper: 0 1px 2px rgba(0, 113, 227, 0.2),
+    0 6px 18px -6px rgba(0, 113, 227, 0.28);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html,
+body {
+  height: 100%;
+  background: var(--color-canvas);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  letter-spacing: -0.012em; /* Apple tracks slightly tight */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+::selection {
+  background: rgba(0, 113, 227, 0.18);
+  color: var(--color-fg);
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #c7c7cc;
+  border-radius: 8px;
+  border: 3px solid var(--color-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b6;
+}
+
+*:focus-visible {
+  outline: 3px solid rgba(0, 113, 227, 0.4);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
+@keyframes ws-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
+.rise {
+  animation: ws-rise var(--duration-slow) var(--ease-out) both;
+}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.hairline {
+  background: var(--color-hairline);
+  height: 1px;
+  width: 100%;
+}
+
+.grain::before {
+  content: none;
+}
+
+/* Apple display type: tight tracking, optical weight */
+.text-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.022em;
+  font-weight: 600;
+  line-height: 1.06;
+}
+/* Apple shows figures in SF with tabular nums — NOT monospace.
+   .text-mono is repurposed to SF-tabular so every metric reads native.
+   (True monospace remains on <pre>/<code> via the UA default.) */
+.text-mono,
+.tabular,
+.num {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+
+/* macOS vibrancy material */
+.vibrancy {
+  background: rgba(246, 246, 248, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.vibrancy-bar {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+@keyframes gemini-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.gemini-card {
+  background: linear-gradient(-45deg, #1e293b, #0f172a, #1e1b4b, #312e81);
+  background-size: 400% 400%;
+  animation: gemini-gradient 15s ease infinite;
+}
+
+.hover-lift {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+  100% { transform: translateY(0px); }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
 }

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 60" width="300" height="60">
+  <!-- AW digital — full lockup, light-surface variant -->
+  <g transform="translate(8,9)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 35 L16 7 L23 35 L29 17 L35 35 L44 7" stroke="#17171c" stroke-width="4"/>
+    <path d="M10 22 L20 22" stroke="#3b82f6" stroke-width="3.2"/>
+  </g>
+  <text x="74" y="40"
+        font-family="'Geist', 'Inter', system-ui, sans-serif"
+        font-size="26" font-weight="200" letter-spacing="6"
+        fill="#17171c">digital</text>
+  <text x="225" y="38"
+        font-family="'Geist Mono', ui-monospace, monospace"
+        font-size="13" font-weight="500" letter-spacing="2"
+        fill="#79798a">OS</text>
+</svg>

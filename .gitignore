@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code / lokale Tooling
+.claude/
+graphify-out/
+
+# Scratch-/Verify-Dateien
+_verify_matcher.mjs
+.tmp-verify-matcher.mjs

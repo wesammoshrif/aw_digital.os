@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AW Digital OS
 
-## Getting Started
+Akquise-Cockpit für deutsche Handwerksbetriebe — Solo-Variante.
 
-First, run the development server:
+## Architektur
+
+- **Next.js 15 (App Router)** + TypeScript + Tailwind v4
+- **Supabase EU (Frankfurt)** als Postgres + Auth
+- **Drizzle ORM** für typsicheres SQL
+- **Anthropic Claude** (Sonnet 4.6 / Haiku 4.5) für Klassifikation, Souffleur, Summary
+- **easybell** für Telefonie (Click-to-Call MVP, später WebRTC)
+
+## Lead-Quellen (alle gratis)
+
+| Quelle | Vol/Tag | Status |
+|---|---|---|
+| OpenStreetMap Overpass | 100-200 | ✅ implementiert |
+| Innungs-Websites (dachdecker.de, …) | 30-50 | ⏳ geplant |
+| Kommunale Gewerbeverzeichnisse | 20-40 | ⏳ geplant |
+| Google Places (200 $ Free-Tier) | 300 | ⏳ geplant |
+| HWK selektiv | 20-30 | ⏳ geplant |
+
+## Trigger-Feeds
+
+- ✅ Handelsregister-Neugründungen (RSS pro Bundesland)
+- ⏳ HWK-Pressemitteilungen (53 Feeds via Inoreader)
+- ⏳ Google News Alerts
+- ⏳ crt.sh SSL-Ablauf
+- ⏳ Förderprogramm-Monitor
+
+## Setup
 
 ```bash
+cp .env.example .env.local
+# DATABASE_URL aus Supabase eintragen
+npx drizzle-kit push
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## API-Routen
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Route | Zweck |
+|---|---|
+| `POST /api/import` | JSON-Export der alten HTML-CRM einlesen |
+| `POST /api/scrape/osm` | Overpass-Scrape für `{city, trades[]}` |
+| `POST /api/audit` | Website-Audit + Pain-Score + Hook |
+| `GET /api/triggers/handelsregister` | Neugründungs-Feed ziehen |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Domain-Modell
 
-## Learn More
+Siehe `src/db/schema.ts`.
 
-To learn more about Next.js, take a look at the following resources:
+```
+leads ─── activities ─── (call|email|sms|note|meeting)
+  │
+  ├── calls (transcript, dispo, sentiment)
+  ├── appointments (ics_uid, reminder)
+  ├── audits (page_speed, pain_score, hook)
+  └── trigger_events (handelsregister_new, foerderung, …)
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Bauplan (Woche 1)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [x] Repo + Schema + DB-Client
+- [x] Drizzle config + .env.example
+- [x] OSM Overpass Scraper
+- [x] Handelsregister Trigger-Feed
+- [x] Website-Audit Worker (PageSpeed + HTML-Checks)
+- [x] HTML-CRM JSON-Importer
+- [x] API-Routen für alle vier Worker
+- [x] Heute / Leads / Triggers UI
+- [x] Lead-Detail mit Call-Mode
+- [ ] Auto-Cadence im Backend verdrahten
+- [ ] Supabase deploy + Daten migrieren
+- [x] easybell Click-to-Call Hook
