@@ -2,6 +2,7 @@
  * Leads-Finder-Quelle: OpenStreetMap (wrappt den bestehenden Overpass-Scraper).
  */
 import { scrapeTrade, TRADE_MAP, classifyPhone } from "@/lib/scrapers/osm";
+import { detectBuilderSubdomain } from "../builderSubdomain";
 import type { FinderLead, SourceResult } from "../types";
 
 export async function findOsm(
@@ -28,6 +29,7 @@ export async function findOsm(
         phone: o.phone,
         phoneType: classifyPhone(o.phone),
         website: o.website,
+        builderPlatform: detectBuilderSubdomain(o.website),
         email: o.email,
         street: o.street,
         city: o.city,

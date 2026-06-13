@@ -61,9 +61,19 @@ export async function fetchHandelsregisterFeed(
   const url = FEEDS[state];
   if (!url) throw new Error(`Unknown state: ${state}`);
 
-  const res = await fetch(url, {
-    headers: { "User-Agent": "aw-digital-os/0.1" },
-  });
+  // Harter Timeout — der Feed-Host ist gelegentlich nicht erreichbar und darf
+  // die kombinierte Finder-Suche nicht blockieren.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": "aw-digital-os/0.1" },
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`Handelsregister feed ${res.status}`);
 
   const xml = await res.text();

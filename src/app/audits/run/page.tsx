@@ -6,6 +6,30 @@ import Link from "next/link";
 import { Search, CheckCircle2, XCircle, ArrowLeft, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+interface LighthouseScores {
+  performance: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+  seo: number | null;
+}
+
+interface SeoCheck {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+  weight: number;
+}
+
+interface SeoReport {
+  score: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+  checks: SeoCheck[];
+  passCount: number;
+  warnCount: number;
+  failCount: number;
+}
+
 interface AuditResult {
   websiteUrl: string;
   mobileScore?: number | null;
@@ -18,6 +42,8 @@ interface AuditResult {
   painScore?: number | null;
   hookText?: string | null;
   techStack?: string[] | null;
+  lighthouse?: LighthouseScores | null;
+  seo?: SeoReport | null;
 }
 
 export default function RunAuditPage() {
@@ -78,7 +104,8 @@ function RunAuditInner() {
         Website-Audit ausführen
       </h1>
       <p className="mt-1 text-[13.5px] text-[var(--color-fg-mute)]">
-        PageSpeed, Technik-Checks und automatischer Cold-Call-Hook.
+        Google Lighthouse (Performance, Barrierefreiheit, Best Practices, SEO),
+        ein regelbasierter SEO-Check und automatischer Cold-Call-Hook.
       </p>
 
       <div className="mt-6 flex gap-2">
@@ -135,6 +162,64 @@ function RunAuditInner() {
             <CheckLine label="Mobil optimiert" ok={result.hasViewport} />
             <CheckLine label="Kontakt-CTA" ok={result.hasBookingCta} />
           </div>
+
+          {/* Lighthouse-Kategorien (Google) */}
+          {result.lighthouse && (
+            <div className="mt-6">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-mute)]">
+                Google Lighthouse
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                <LhRing label="Performance" value={result.lighthouse.performance} />
+                <LhRing label="Barrierefrei" value={result.lighthouse.accessibility} />
+                <LhRing label="Best Practices" value={result.lighthouse.bestPractices} />
+                <LhRing label="SEO" value={result.lighthouse.seo} />
+              </div>
+            </div>
+          )}
+
+          {/* Hinweis, wenn Lighthouse mangels API-Key nicht lief */}
+          {!result.lighthouse && (
+            <p className="mt-5 rounded-[10px] bg-[#fff8ef] px-3.5 py-2.5 text-[12px] leading-relaxed text-[#7a4a10]">
+              Lighthouse-Scores fehlen: dafür einen (kostenlosen) Google
+              PageSpeed-API-Key als <code>PAGESPEED_API_KEY</code> in{" "}
+              <code>.env.local</code> setzen. Der SEO-Check unten läuft auch ohne
+              Key.
+            </p>
+          )}
+
+          {/* Deterministischer SEO-Check */}
+          {result.seo && (
+            <div className="mt-6 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-mute)]">
+                  SEO-Check (regelbasiert)
+                </div>
+                <div className="flex items-center gap-2 text-[12px] text-[var(--color-fg-mute)]">
+                  <span className="text-[#1a7f37]">{result.seo.passCount} ok</span>
+                  <span className="text-[#b25000]">{result.seo.warnCount} warn</span>
+                  <span className="text-[#d70015]">{result.seo.failCount} fehler</span>
+                  <span
+                    className={cn(
+                      "ml-1 rounded-md px-2 py-0.5 text-[13px] font-bold text-white",
+                      result.seo.score >= 75
+                        ? "bg-[#1a7f37]"
+                        : result.seo.score >= 50
+                          ? "bg-[#b25000]"
+                          : "bg-[#d70015]",
+                    )}
+                  >
+                    {result.seo.score}/100 · {result.seo.grade}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {result.seo.checks.map((c) => (
+                  <SeoRow key={c.id} check={c} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {result.hookText && (
             <p className="mt-5 rounded-md border-l-[3px] border-[var(--color-copper-500)] bg-[#eff5ff] py-2.5 pl-3.5 pr-4 text-[13.5px] italic leading-relaxed text-[var(--color-copper-700)]">
@@ -212,6 +297,50 @@ function CheckLine({ label, ok }: { label: string; ok: boolean | null | undefine
         <XCircle className="h-4 w-4 text-[#d70015]" />
       )}
       {label}
+    </div>
+  );
+}
+
+/** Lighthouse-Score-Ring (0–100, Google-Ampel: ≥90 grün, ≥50 orange). */
+function LhRing({ label, value }: { label: string; value: number | null | undefined }) {
+  const v = value ?? null;
+  const color =
+    v === null ? "#9aa0a6" : v >= 90 ? "#0cce6b" : v >= 50 ? "#ffa400" : "#ff4e42";
+  const deg = v === null ? 0 : (v / 100) * 360;
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        className="relative grid h-14 w-14 place-items-center rounded-full"
+        style={{ background: `conic-gradient(${color} ${deg}deg, var(--color-surface-2) 0deg)` }}
+      >
+        <div className="grid h-[46px] w-[46px] place-items-center rounded-full bg-white text-[15px] font-bold tabular" style={{ color }}>
+          {v ?? "–"}
+        </div>
+      </div>
+      <div className="text-center text-[10.5px] font-medium leading-tight text-[var(--color-fg-mute)]">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+/** Eine Zeile im SEO-Check: Status-Icon + Label + Detail. */
+function SeoRow({ check }: { check: SeoCheck }) {
+  const tone =
+    check.status === "pass"
+      ? "text-[#1a7f37]"
+      : check.status === "warn"
+        ? "text-[#b25000]"
+        : "text-[#d70015]";
+  const icon =
+    check.status === "pass" ? "●" : check.status === "warn" ? "▲" : "✕";
+  return (
+    <div className="flex items-baseline gap-2 text-[12.5px]">
+      <span className={cn("w-3 shrink-0 text-center text-[10px]", tone)}>{icon}</span>
+      <span className="w-[140px] shrink-0 font-medium text-[var(--color-fg-dim)]">
+        {check.label}
+      </span>
+      <span className="text-[var(--color-fg-mute)]">{check.detail}</span>
     </div>
   );
 }

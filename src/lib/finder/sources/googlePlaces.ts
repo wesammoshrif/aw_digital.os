@@ -10,6 +10,7 @@
 
 import type { FinderLead, SourceResult } from "@/lib/finder/types";
 import { classifyPhone } from "@/lib/scrapers/osm";
+import { detectBuilderSubdomain } from "@/lib/finder/builderSubdomain";
 
 const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 
@@ -155,6 +156,7 @@ function mapPlace(place: GooglePlace, trade: string): FinderLead {
     phone,
     phoneType: classifyPhone(phone),
     website: place.websiteUri ?? null,
+    builderPlatform: detectBuilderSubdomain(place.websiteUri ?? null),
     email: null, // Google liefert keine E-Mail.
     street,
     city,

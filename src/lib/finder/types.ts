@@ -9,6 +9,7 @@
 export type FinderSourceId =
   | "osm"
   | "google_places"
+  | "handelsregister"
   | "kleinanzeigen"
   | "branchenbuch";
 
@@ -19,6 +20,9 @@ export interface FinderLead {
   phone: string | null;
   phoneType: "mobile" | "landline" | null; // 015x/016x/017x → mobile
   website: string | null;
+  // Gesetzt, wenn die Website auf einer Gratis-Baukasten-Subdomain läuft
+  // (z.B. „Jimdo", „Wix (Gratis)") → starkes Webdesign-Verkaufssignal.
+  builderPlatform: string | null;
   email: string | null;
   street: string | null;
   city: string | null;
@@ -54,6 +58,7 @@ export interface FinderResponse {
 export const SOURCE_LABELS: Record<FinderSourceId, string> = {
   osm: "OpenStreetMap",
   google_places: "Google Maps",
+  handelsregister: "Neugründungen (Handelsregister)",
   kleinanzeigen: "Kleinanzeigen",
   branchenbuch: "Branchenbücher",
 };

@@ -49,13 +49,56 @@ const TRADES: Array<{ key: string; label: string }> = [
 type PhoneFilter = "all" | "with" | "mobile" | "landline";
 type WebsiteFilter = "all" | "without" | "with";
 
-/** Quellen, die der Nutzer wählen kann. `enabled:false` → sichtbar, aber „bald". */
+/**
+ * Live-Quellen, die direkt im Finder abgefragt werden. Nur Quellen mit
+ * legaler öffentlicher API/Feed (OSM, Google Places). `enabled:false` →
+ * sichtbar, aber nicht live (rechtlich/technisch nur über Skript/manuell).
+ */
 const SOURCES: Array<{ id: FinderSourceId; enabled: boolean }> = [
   { id: "osm", enabled: true },
   { id: "google_places", enabled: true },
+  { id: "handelsregister", enabled: false },
   { id: "kleinanzeigen", enabled: false },
   { id: "branchenbuch", enabled: false },
 ];
+
+/**
+ * Vollständiger Quellen-Katalog (Ergebnis der Quellen-Recherche + Rechts-Check).
+ * „tier" sagt ehrlich, wie eine Quelle nutzbar ist:
+ *   live    → direkte legale API/Feed, im Finder oben wählbar
+ *   signal  → reines Anreicherungs-Signal auf bereits gefundenen Leads (legal)
+ *   skript  → nur über ein Offline-Skript (AGB/Anti-Bot, rechtlich heikel)
+ *   lizenz  → nur über kaufbare Lizenz-Daten sauber (kein Eigen-Scrape)
+ *   manuell → nur manuelle Einzelrecherche / Brief, kein Auto-Abruf
+ */
+const SOURCE_CATALOG: Array<{
+  name: string;
+  tier: "live" | "signal" | "skript" | "lizenz" | "manuell";
+  note: string;
+}> = [
+  { name: "OpenStreetMap (Overpass)", tier: "live", note: "Kostenlos, öffentlich. Firma, Tel, Adresse, Website je Gewerk × Stadt." },
+  { name: "Google Maps (Places API)", tier: "live", note: "Mit API-Key. Tel + Bewertung; der ohne-Website-Filter ist das heißeste Signal. Achtung Google-ToS: Daten nicht dauerhaft speichern." },
+  { name: "Gratis-Baukasten-Erkennung", tier: "signal", note: "Markiert Leads, deren Seite auf jimdosite/wixsite/business.site läuft → kein eigener Domain-Auftritt. Läuft auf OSM/Google mit." },
+  { name: "Neugründungen (Handelsregister)", tier: "lizenz", note: "Bestes Timing-Signal, aber Justizportal-Scrape ist AGB-/§87b-heikel. Sauber nur über lizenzierte Open-Data (OffeneRegister). Erstkontakt per Brief." },
+  { name: "Stellenanzeigen (Arbeitsagentur-API)", tier: "signal", note: "Offizielle Jobsuche-API als Wachstums-/Timing-Signal (stellt ein = wächst). Tel nur aus eigenem Impressum, Brief-Erstkontakt." },
+  { name: "Branchenbücher (Örtliche/11880)", tier: "skript", note: "Telefonreich, aber geschützte Datenbank (§87b) + Anti-Bot. Nur manuelle Einzelrecherche, kein Bulk-Scrape." },
+  { name: "Handwerker-Plattformen (MyHammer/Check24)", tier: "manuell", note: "Login-/AGB-Wall. Nur manuell als Signal: zahlt für Leads, hat oft keine eigene Website." },
+  { name: "Handwerkskammer-Verzeichnisse", tier: "skript", note: "Kammer-/Innungslisten. Nur als Anreicherungs-Signal, Brief-Erstkontakt." },
+  { name: "Kleinanzeigen.de", tier: "skript", note: "Offline-Skript vorhanden (scripts/scrape-kleinanzeigen.ts), nur Gewerbe-Impressum." },
+  { name: "Social lokal (Instagram/Facebook)", tier: "manuell", note: "Aktiv auf Social, aber keine Website — nur manuelles Scoring-Signal." },
+  { name: "Messe-Aussteller", tier: "lizenz", note: "Aussteller-Adresslisten kaufbar (CSV-Import), kein Scrape." },
+];
+
+const TIER_BADGE: Record<
+  string,
+  { variant: "success" | "neutral" | "warm" | "danger"; label: string }
+> = {
+  live: { variant: "success", label: "Live" },
+  signal: { variant: "success", label: "Signal" },
+  lizenz: { variant: "warm", label: "Lizenz-Daten" },
+  skript: { variant: "warm", label: "Skript" },
+  manuell: { variant: "neutral", label: "Manuell" },
+};
 
 type ImportResponse = {
   ok: boolean;
@@ -109,6 +152,7 @@ export default function LeadsFinderPage() {
   // ── Ergebnis-Filter (clientseitig, nach der Suche) ──
   const [phoneFilter, setPhoneFilter] = useState<PhoneFilter>("all");
   const [websiteFilter, setWebsiteFilter] = useState<WebsiteFilter>("all");
+  const [builderFilter, setBuilderFilter] = useState<"all" | "only">("all");
   const [plzFilter, setPlzFilter] = useState("");
   const [textFilter, setTextFilter] = useState("");
 
@@ -133,6 +177,7 @@ export default function LeadsFinderPage() {
     if (phoneFilter === "landline" && l.phoneType !== "landline") return false;
     if (websiteFilter === "without" && l.website) return false;
     if (websiteFilter === "with" && !l.website) return false;
+    if (builderFilter === "only" && !l.builderPlatform) return false;
     if (plzFilter.trim() && !(l.postalCode ?? "").startsWith(plzFilter.trim()))
       return false;
     if (textFilter.trim()) {
@@ -342,6 +387,50 @@ export default function LeadsFinderPage() {
         </div>
       </Card>
 
+      {/* Quellen-Katalog + Rechtshinweis */}
+      <Card className="mt-5 max-w-3xl">
+        <CardHeader
+          title="Quellen-Katalog"
+          eyebrow="Was geht — und was rechtlich nicht"
+        />
+        <div className="px-5 py-4">
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            {SOURCE_CATALOG.map((s) => {
+              const b = TIER_BADGE[s.tier];
+              return (
+                <div
+                  key={s.name}
+                  className="rounded-[var(--radius-md)] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-3 py-2.5"
+                >
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-[12.5px] font-medium text-[var(--color-fg)]">
+                      {s.name}
+                    </span>
+                    <Badge variant={b.variant}>{b.label}</Badge>
+                  </div>
+                  <p className="text-[11px] leading-snug text-[var(--color-fg-mute)]">
+                    {s.note}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 rounded-[var(--radius-md)] border border-[#f0d8b8] bg-[#fff8ef] px-3.5 py-3 text-[11.5px] leading-relaxed text-[#7a4a10]">
+            <strong>Rechtlicher Hinweis (wichtig).</strong> Das BVerwG
+            (6 C 3.23, 29.01.2025) hat klargestellt: Kontaktdaten aus
+            öffentlichen Verzeichnissen für <em>telefonische</em> Kaltakquise zu
+            nutzen ist ohne Einwilligung unzulässig — bloßer Branchenbezug
+            genügt nicht, und Art. 6 f DSGVO hebelt UWG §7 nicht aus. Diese
+            Quellen liefern darum vor allem <strong>Signale</strong> zum
+            Priorisieren; der rechtssichere Erstkontakt läuft per{" "}
+            <strong>adressiertem Brief</strong> (fällt nicht unter §7), Telefon
+            erst nach dokumentierter Einwilligung. Vor produktivem Einsatz
+            anwaltlich freigeben.
+          </div>
+        </div>
+      </Card>
+
       {/* Quellen-Status */}
       {response && response.sources.length > 0 && (
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -381,6 +470,17 @@ export default function LeadsFinderPage() {
                   { value: "all", label: "Alle" },
                   { value: "without", label: "ohne (heiß)" },
                   { value: "with", label: "mit" },
+                ]}
+              />
+            </FilterGroup>
+
+            <FilterGroup label="Baukasten">
+              <Segmented
+                value={builderFilter}
+                onChange={(v) => setBuilderFilter(v as "all" | "only")}
+                options={[
+                  { value: "all", label: "Alle" },
+                  { value: "only", label: "nur Gratis-Baukasten" },
                 ]}
               />
             </FilterGroup>
@@ -527,14 +627,21 @@ export default function LeadsFinderPage() {
                     </td>
                     <td className="px-4 py-3 text-[12.5px]">
                       {l.website ? (
-                        <a
-                          href={l.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[var(--color-copper-600)] hover:underline"
-                        >
-                          {l.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
-                        </a>
+                        <span className="inline-flex flex-col gap-1">
+                          <a
+                            href={l.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[var(--color-copper-600)] hover:underline"
+                          >
+                            {l.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                          </a>
+                          {l.builderPlatform && (
+                            <span className="w-fit rounded-full bg-[#fff2e3] px-1.5 py-0.5 text-[9.5px] font-medium tracking-wide text-[#b25000]">
+                              GRATIS: {l.builderPlatform.toUpperCase()}
+                            </span>
+                          )}
+                        </span>
                       ) : (
                         <span className="text-[var(--color-fg-mute)]">—</span>
                       )}

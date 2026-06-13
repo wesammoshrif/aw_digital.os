@@ -13,6 +13,7 @@ import type {
 } from "./types";
 import { findOsm } from "./sources/osm";
 import { findGooglePlaces } from "./sources/googlePlaces";
+import { findHandelsregister } from "./sources/handelsregister";
 import { findKleinanzeigen } from "./sources/kleinanzeigen";
 import { findBranchenbuch } from "./sources/branchenbuch";
 
@@ -42,6 +43,8 @@ export async function findLeads(q: FinderQuery): Promise<FinderResponse> {
   if (q.sources.includes("osm")) tasks.push(findOsm(q.city, q.trades));
   if (q.sources.includes("google_places"))
     tasks.push(findGooglePlaces(q.city, q.trades));
+  if (q.sources.includes("handelsregister"))
+    tasks.push(findHandelsregister(q.trades));
   if (q.sources.includes("kleinanzeigen")) tasks.push(findKleinanzeigen());
   if (q.sources.includes("branchenbuch")) tasks.push(findBranchenbuch());
 

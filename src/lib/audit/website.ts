@@ -11,6 +11,9 @@
  * Output: strukturiertes AuditResult + automatischer Cold-Call-Hook.
  */
 
+import { detectBuilderSubdomain } from "@/lib/finder/builderSubdomain";
+import { runSeoChecks, type SeoReport } from "./seo";
+
 export interface AuditResult {
   websiteUrl: string;
   mobileScore: number | null;
@@ -24,6 +27,10 @@ export interface AuditResult {
   hasMailto: boolean;
   copyrightYear: number | null;
   techStack: string[];
+  // Volle Lighthouse-Kategorien (mobil) — 0–100 oder null ohne Messung.
+  lighthouse: LighthouseScores | null;
+  // Deterministischer On-Page-SEO-Report (regelbasiert, kein KI).
+  seo: SeoReport;
   painScore: number; // 0–100, niedriger = besser für uns als Verkäufer
   hookText: string;
   flags: string[];
@@ -38,17 +45,26 @@ export async function runAudit(
 ): Promise<AuditResult> {
   const websiteUrl = normalize(rawUrl);
 
-  // ── 1. PageSpeed mobile + desktop (parallel) ──────────────────
-  const [mobile, desktop, html] = await Promise.all([
+  // ── 1. PageSpeed mobile + desktop + HTML + Site-Dateien (parallel) ─
+  const [mobile, desktop, html, siteFiles] = await Promise.all([
     fetchPagespeed(websiteUrl, "mobile", apiKey).catch(() => null),
     fetchPagespeed(websiteUrl, "desktop", apiKey).catch(() => null),
     fetchHtml(websiteUrl).catch(() => null),
+    fetchSiteFiles(websiteUrl).catch(() => null),
   ]);
 
   const mobileScore = mobile?.score ?? null;
   const desktopScore = desktop?.score ?? null;
   const lcpMs = mobile?.lcpMs ?? null;
   const clsScore = mobile?.cls ?? null;
+  const lighthouse: LighthouseScores | null = mobile
+    ? {
+        performance: mobile.performance,
+        accessibility: mobile.accessibility,
+        bestPractices: mobile.bestPractices,
+        seo: mobile.seo,
+      }
+    : null;
 
   // ── 2. HTML-basierte Checks ───────────────────────────────────
   const hasHttps = websiteUrl.startsWith("https://");
@@ -62,10 +78,17 @@ export async function runAudit(
   const hasMailto = /mailto:/i.test(lowerHtml);
   const copyrightYear = extractFooterYear(html);
   const techStack = detectTechStack(html);
+  const builderSubdomain = detectBuilderSubdomain(websiteUrl);
 
   // ── 3. Pain-Score & Flags ─────────────────────────────────────
   const flags: string[] = [];
   let pain = 100;
+
+  // Gratis-Baukasten-Adresse = sehr starkes Verkaufssignal.
+  if (builderSubdomain) {
+    pain -= 20;
+    flags.push(`builder_subdomain:${builderSubdomain}`);
+  }
 
   if (mobileScore !== null) {
     if (mobileScore < 50) {
@@ -115,6 +138,14 @@ export async function runAudit(
 
   pain = Math.max(0, Math.min(100, pain));
 
+  // ── 3b. Deterministischer SEO-Report (regelbasiert) ───────────
+  const seo = runSeoChecks(html, {
+    url: websiteUrl,
+    hasHttps,
+    robotsTxt: siteFiles?.robotsTxt ?? null,
+    sitemapReachable: siteFiles?.sitemapReachable ?? null,
+  });
+
   // ── 4. Auto-Hook ──────────────────────────────────────────────
   const hookText = buildHook({
     flags,
@@ -136,24 +167,48 @@ export async function runAudit(
     hasMailto,
     copyrightYear,
     techStack,
+    lighthouse,
+    seo,
     painScore: pain,
     hookText,
     flags,
   };
 }
 
-// ─── PageSpeed Insights ──────────────────────────────────────────
+// ─── PageSpeed Insights / Lighthouse ─────────────────────────────
+
+export interface LighthouseScores {
+  performance: number | null;
+  accessibility: number | null;
+  bestPractices: number | null;
+  seo: number | null;
+}
+
+interface PagespeedResult extends LighthouseScores {
+  // Rückwärtskompatibel: score == performance (für die DB-Spalten/alte UI).
+  score: number;
+  lcpMs: number;
+  cls: number;
+  fcpMs: number | null;
+  tbtMs: number | null;
+  speedIndexMs: number | null;
+}
+
+/** category.score von Lighthouse ist 0–1 oder null → 0–100 oder null. */
+function pct(score: number | null | undefined): number | null {
+  return typeof score === "number" ? Math.round(score * 100) : null;
+}
 
 async function fetchPagespeed(
   url: string,
   strategy: "mobile" | "desktop",
   apiKey?: string,
-): Promise<{ score: number; lcpMs: number; cls: number }> {
-  const params = new URLSearchParams({
-    url,
-    strategy,
-    category: "performance",
-  });
+): Promise<PagespeedResult> {
+  // Alle vier Lighthouse-Kategorien in EINEM Lauf abfragen.
+  const params = new URLSearchParams({ url, strategy });
+  for (const c of ["performance", "accessibility", "best-practices", "seo"]) {
+    params.append("category", c);
+  }
   if (apiKey) params.append("key", apiKey);
 
   const res = await fetch(`${PAGESPEED_URL}?${params}`, {
@@ -163,22 +218,85 @@ async function fetchPagespeed(
 
   const data = (await res.json()) as {
     lighthouseResult?: {
-      categories?: { performance?: { score?: number } };
+      categories?: Record<string, { score?: number | null }>;
       audits?: Record<string, { numericValue?: number; score?: number }>;
     };
   };
 
-  const perf = data.lighthouseResult?.categories?.performance?.score ?? 0;
-  const lcp = data.lighthouseResult?.audits?.["largest-contentful-paint"]
-    ?.numericValue;
-  const cls =
-    data.lighthouseResult?.audits?.["cumulative-layout-shift"]?.numericValue;
+  const cats = data.lighthouseResult?.categories ?? {};
+  const audits = data.lighthouseResult?.audits ?? {};
+  const num = (id: string) => {
+    const v = audits[id]?.numericValue;
+    return typeof v === "number" ? Math.round(v) : null;
+  };
+
+  const performance = pct(cats["performance"]?.score);
 
   return {
-    score: Math.round(perf * 100),
-    lcpMs: Math.round(lcp ?? 0),
-    cls: Number((cls ?? 0).toFixed(3)),
+    performance,
+    accessibility: pct(cats["accessibility"]?.score),
+    bestPractices: pct(cats["best-practices"]?.score),
+    seo: pct(cats["seo"]?.score),
+    score: performance ?? 0,
+    lcpMs: num("largest-contentful-paint") ?? 0,
+    cls: Number(
+      (audits["cumulative-layout-shift"]?.numericValue ?? 0).toFixed(3),
+    ),
+    fcpMs: num("first-contentful-paint"),
+    tbtMs: num("total-blocking-time"),
+    speedIndexMs: num("speed-index"),
   };
+}
+
+// ─── robots.txt + sitemap.xml (deterministisch) ──────────────────
+
+async function fetchSiteFiles(websiteUrl: string): Promise<{
+  robotsTxt: { reachable: boolean; blocksAll: boolean; sitemapRef: boolean };
+  sitemapReachable: boolean;
+}> {
+  let origin: string;
+  try {
+    origin = new URL(websiteUrl).origin;
+  } catch {
+    return {
+      robotsTxt: { reachable: false, blocksAll: false, sitemapRef: false },
+      sitemapReachable: false,
+    };
+  }
+
+  const get = async (path: string): Promise<string | null> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(origin + path, {
+        headers: { "User-Agent": "AW-Digital-Audit/0.1" },
+        signal: ctrl.signal,
+      });
+      return res.ok ? await res.text() : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const [robots, sitemap] = await Promise.all([
+    get("/robots.txt"),
+    get("/sitemap.xml"),
+  ]);
+
+  const robotsTxt = {
+    reachable: robots !== null,
+    blocksAll:
+      robots !== null &&
+      /user-agent:\s*\*/i.test(robots) &&
+      /^\s*disallow:\s*\/\s*$/im.test(robots),
+    sitemapRef: robots !== null && /^\s*sitemap:\s*\S+/im.test(robots),
+  };
+  const sitemapReachable =
+    sitemap !== null && /<(urlset|sitemapindex)\b/i.test(sitemap);
+
+  return { robotsTxt, sitemapReachable };
 }
 
 // ─── HTML fetch + lightweight parsers ────────────────────────────
@@ -251,6 +369,12 @@ function buildHook(input: {
 }): string {
   const { flags, mobileScore, lcpMs, copyrightYear } = input;
 
+  const builder = flags
+    .find((f) => f.startsWith("builder_subdomain:"))
+    ?.slice("builder_subdomain:".length);
+  if (builder) {
+    return `Ihre Website läuft auf einer Gratis-Adresse von ${builder} — das sieht jeder Kunde sofort an der Internetadresse und wirkt schnell unseriös. Mit einer eigenen Domain gewinnen Sie da direkt Vertrauen.`;
+  }
   if (flags.includes("no_https")) {
     return "Mir ist aufgefallen, dass Ihre Website noch ohne SSL läuft — Google warnt Besucher inzwischen aktiv vor solchen Seiten.";
   }
