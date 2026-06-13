@@ -12,17 +12,100 @@
  * Telefonnummer-Quote ~30–40%, Website-Quote ~25%.
  */
 
+/**
+ * Gewerk → OSM-Tag-Selektoren.
+ *
+ * Selektoren im Format `key=value`. Ohne `=` wird `craft=` angenommen
+ * (Abwärtskompatibilität). So lassen sich neben `craft=` auch `shop=`,
+ * `healthcare=`, `amenity=` und `office=` abfragen — nötig für Nicht-Handwerk
+ * (KFZ, Physio, Friseur …).
+ *
+ * Reihenfolge grob nach Kaufwilligkeit (Research: höchster Auftragswert +
+ * größte Web-Lücke + Erreichbarkeit zuerst). Unbekannte Tag-Werte liefern bei
+ * Overpass einfach 0 Treffer — kein Fehler.
+ */
 export const TRADE_MAP: Record<string, string[]> = {
-  dachdecker: ["roofer"],
-  maler: ["painter"],
-  elektriker: ["electrician"],
-  shk: ["plumber", "hvac"],
-  tischler: ["carpenter", "joiner"],
-  fliesenleger: ["tiler"],
-  maurer: ["mason"],
-  bauunternehmer: ["builder"],
-  galabau: ["gardener", "landscaper"],
+  // ── Top-Prioritäten (hoher Auftragswert × Web-Lücke) ──
+  dachdecker: ["craft=roofer"],
+  shk: ["craft=plumber", "craft=hvac"],
+  galabau: ["craft=gardener", "craft=landscape_gardener"],
+  fensterbauer: ["craft=window_construction"],
+  kfz: ["shop=car_repair"],
+  // ── Kern-Handwerk ──
+  elektriker: ["craft=electrician"],
+  maler: ["craft=painter"],
+  fliesenleger: ["craft=tiler"],
+  tischler: ["craft=carpenter", "craft=joiner", "craft=cabinet_maker"],
+  zimmerer: ["craft=carpenter"],
+  maurer: ["craft=mason"],
+  bauunternehmer: ["craft=builder"],
+  metallbau: ["craft=metal_construction", "craft=blacksmith", "craft=locksmith"],
+  geruestbau: ["craft=scaffolder"],
+  stuckateur: ["craft=plasterer"],
+  trockenbau: ["craft=plasterer"],
+  bodenleger: ["craft=floorer", "craft=parquet_layer"],
+  schornsteinfeger: ["craft=chimney_sweeper"],
+  estrichleger: ["craft=floorer"],
+  // ── Dienstleister mit hoher telefonischer Erreichbarkeit ──
+  physio: ["healthcare=physiotherapist", "amenity=physiotherapist"],
+  friseur: ["shop=hairdresser"],
+  kosmetik: ["shop=beauty"],
+  fahrschule: ["amenity=driving_school"],
+  gebaeudereinigung: ["craft=cleaning", "shop=cleaning"],
+  schaedlingsbekaempfung: ["craft=pest_control"],
 };
+
+/** Deutsche Anzeige-Labels je Gewerk-Key (für UI-Chips). */
+export const TRADE_LABELS: Record<string, string> = {
+  dachdecker: "Dachdecker",
+  shk: "SHK (Sanitär/Heizung)",
+  galabau: "Garten- & Landschaftsbau",
+  fensterbauer: "Fensterbauer",
+  kfz: "KFZ-Werkstatt",
+  elektriker: "Elektriker",
+  maler: "Maler",
+  fliesenleger: "Fliesenleger",
+  tischler: "Tischler/Schreiner",
+  zimmerer: "Zimmerer",
+  maurer: "Maurer",
+  bauunternehmer: "Bauunternehmer",
+  metallbau: "Metallbau/Schlosser",
+  geruestbau: "Gerüstbau",
+  stuckateur: "Stuckateur",
+  trockenbau: "Trockenbau",
+  bodenleger: "Bodenleger",
+  schornsteinfeger: "Schornsteinfeger",
+  estrichleger: "Estrichleger",
+  physio: "Physiotherapie",
+  friseur: "Friseur",
+  kosmetik: "Kosmetik/Nagelstudio",
+  fahrschule: "Fahrschule",
+  gebaeudereinigung: "Gebäudereinigung",
+  schaedlingsbekaempfung: "Schädlingsbekämpfung",
+};
+
+/** OSM-Selektor `key=value` zerlegen; ohne `=` gilt `craft=`. */
+function parseSelector(sel: string): { key: string; value: string } {
+  const i = sel.indexOf("=");
+  if (i === -1) return { key: "craft", value: sel };
+  return { key: sel.slice(0, i), value: sel.slice(i + 1) };
+}
+
+/**
+ * Klassifiziert eine (normalisierte) deutsche Rufnummer als Mobil/Festnetz.
+ * Mobil = +49 15x / 16x / 17x. Alles andere (Ortsvorwahl) = Festnetz.
+ */
+export function classifyPhone(
+  phone: string | null | undefined,
+): "mobile" | "landline" | null {
+  if (!phone) return null;
+  const d = phone.replace(/\D/g, "");
+  // Auf nationales Format bringen: +49…/0049… → 0…
+  let nat = d;
+  if (nat.startsWith("49")) nat = "0" + nat.slice(2);
+  if (!nat.startsWith("0")) nat = "0" + nat;
+  return /^01[567]/.test(nat) ? "mobile" : "landline";
+}
 
 export interface OsmLeadRaw {
   osmId: string;
@@ -56,15 +139,14 @@ export function buildOverpassQuery(
   crafts: string[],
   area: { areaName?: string; bbox?: [number, number, number, number] },
 ): string {
-  const craftFilter = crafts.map((c) => `["craft"="${c}"]`).join("|");
-  const tagAlt = crafts.map((c) => `nwr["craft"="${c}"]`).join(";\n  ");
+  const sels = crafts.map(parseSelector);
 
   if (area.bbox) {
     const [s, w, n, e] = area.bbox;
     return `
 [out:json][timeout:60];
 (
-  ${crafts.map((c) => `nwr["craft"="${c}"](${s},${w},${n},${e});`).join("\n  ")}
+  ${sels.map(({ key, value }) => `nwr["${key}"="${value}"](${s},${w},${n},${e});`).join("\n  ")}
 );
 out center tags;
 `.trim();
@@ -75,7 +157,7 @@ out center tags;
 [out:json][timeout:90];
 area["name"="${area.areaName}"]["admin_level"~"6|7|8"]->.searchArea;
 (
-  ${crafts.map((c) => `nwr["craft"="${c}"](area.searchArea);`).join("\n  ")}
+  ${sels.map(({ key, value }) => `nwr["${key}"="${value}"](area.searchArea);`).join("\n  ")}
 );
 out center tags;
 `.trim();

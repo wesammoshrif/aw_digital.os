@@ -9,6 +9,7 @@
  */
 
 import type { FinderLead, SourceResult } from "@/lib/finder/types";
+import { classifyPhone } from "@/lib/scrapers/osm";
 
 const ENDPOINT = "https://places.googleapis.com/v1/places:searchText";
 
@@ -144,13 +145,15 @@ function parseAddress(place: GooglePlace): {
 /** Mappt einen einzelnen place auf einen FinderLead. */
 function mapPlace(place: GooglePlace, trade: string): FinderLead {
   const { street, postalCode, city } = parseAddress(place);
+  const phone = normalizePhone(
+    place.nationalPhoneNumber ?? place.internationalPhoneNumber ?? null,
+  );
   return {
     source: "google_places",
     company: place.displayName?.text ?? "Unbekannt",
     trade,
-    phone: normalizePhone(
-      place.nationalPhoneNumber ?? place.internationalPhoneNumber ?? null,
-    ),
+    phone,
+    phoneType: classifyPhone(phone),
     website: place.websiteUri ?? null,
     email: null, // Google liefert keine E-Mail.
     street,

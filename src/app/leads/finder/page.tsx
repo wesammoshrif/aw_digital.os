@@ -13,16 +13,41 @@ import {
   type FinderSourceId,
 } from "@/lib/finder/types";
 
-const TRADES = [
-  "dachdecker",
-  "maler",
-  "elektriker",
-  "shk",
-  "tischler",
-  "fliesenleger",
-  "maurer",
-  "galabau",
+/**
+ * Wählbare Gewerke (Reihenfolge ~ Kaufwilligkeit aus dem Branchen-Research:
+ * höchster Auftragswert × Web-Lücke × Erreichbarkeit zuerst).
+ * Labels lokal gehalten, damit der Server-Scraper nicht ins Client-Bundle wandert.
+ */
+const TRADES: Array<{ key: string; label: string }> = [
+  { key: "dachdecker", label: "Dachdecker" },
+  { key: "shk", label: "SHK (Sanitär/Heizung)" },
+  { key: "galabau", label: "Garten- & Landschaftsbau" },
+  { key: "fensterbauer", label: "Fensterbauer" },
+  { key: "kfz", label: "KFZ-Werkstatt" },
+  { key: "elektriker", label: "Elektriker" },
+  { key: "maler", label: "Maler" },
+  { key: "fliesenleger", label: "Fliesenleger" },
+  { key: "tischler", label: "Tischler/Schreiner" },
+  { key: "zimmerer", label: "Zimmerer" },
+  { key: "maurer", label: "Maurer" },
+  { key: "bauunternehmer", label: "Bauunternehmer" },
+  { key: "metallbau", label: "Metallbau/Schlosser" },
+  { key: "geruestbau", label: "Gerüstbau" },
+  { key: "stuckateur", label: "Stuckateur" },
+  { key: "trockenbau", label: "Trockenbau" },
+  { key: "bodenleger", label: "Bodenleger" },
+  { key: "schornsteinfeger", label: "Schornsteinfeger" },
+  { key: "estrichleger", label: "Estrichleger" },
+  { key: "physio", label: "Physiotherapie" },
+  { key: "friseur", label: "Friseur" },
+  { key: "kosmetik", label: "Kosmetik/Nagelstudio" },
+  { key: "fahrschule", label: "Fahrschule" },
+  { key: "gebaeudereinigung", label: "Gebäudereinigung" },
+  { key: "schaedlingsbekaempfung", label: "Schädlingsbekämpfung" },
 ];
+
+type PhoneFilter = "all" | "with" | "mobile" | "landline";
+type WebsiteFilter = "all" | "without" | "with";
 
 /** Quellen, die der Nutzer wählen kann. `enabled:false` → sichtbar, aber „bald". */
 const SOURCES: Array<{ id: FinderSourceId; enabled: boolean }> = [
@@ -81,6 +106,12 @@ export default function LeadsFinderPage() {
     text: string;
   } | null>(null);
 
+  // ── Ergebnis-Filter (clientseitig, nach der Suche) ──
+  const [phoneFilter, setPhoneFilter] = useState<PhoneFilter>("all");
+  const [websiteFilter, setWebsiteFilter] = useState<WebsiteFilter>("all");
+  const [plzFilter, setPlzFilter] = useState("");
+  const [textFilter, setTextFilter] = useState("");
+
   function toggleTrade(t: string) {
     setSelectedTrades((s) =>
       s.includes(t) ? s.filter((x) => x !== t) : [...s, t],
@@ -93,7 +124,24 @@ export default function LeadsFinderPage() {
     );
   }
 
-  const leads = response?.leads ?? [];
+  const allLeads = response?.leads ?? [];
+
+  // Gebiet- und Telefon-Filter (genau die Achsen aus dem Auftrag).
+  const leads = allLeads.filter((l) => {
+    if (phoneFilter === "with" && !l.phone) return false;
+    if (phoneFilter === "mobile" && l.phoneType !== "mobile") return false;
+    if (phoneFilter === "landline" && l.phoneType !== "landline") return false;
+    if (websiteFilter === "without" && l.website) return false;
+    if (websiteFilter === "with" && !l.website) return false;
+    if (plzFilter.trim() && !(l.postalCode ?? "").startsWith(plzFilter.trim()))
+      return false;
+    if (textFilter.trim()) {
+      const q = textFilter.trim().toLowerCase();
+      const hay = `${l.company} ${l.city ?? ""} ${l.trade ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
 
   const canFind =
     !loading && selectedTrades.length > 0 && selectedSources.length > 0;
@@ -214,18 +262,18 @@ export default function LeadsFinderPage() {
             </span>
             <div className="flex flex-wrap gap-2">
               {TRADES.map((t) => {
-                const active = selectedTrades.includes(t);
+                const active = selectedTrades.includes(t.key);
                 return (
                   <button
-                    key={t}
-                    onClick={() => toggleTrade(t)}
+                    key={t.key}
+                    onClick={() => toggleTrade(t.key)}
                     className={
                       active
                         ? "rounded-full border border-[#cfe0fd] bg-[#eff5ff] px-3 py-1 text-[11.5px] text-[var(--color-copper-700)]"
                         : "rounded-full border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-3 py-1 text-[11.5px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
                     }
                   >
-                    {t}
+                    {t.label}
                   </button>
                 );
               })}
@@ -306,6 +354,63 @@ export default function LeadsFinderPage() {
             );
           })}
         </div>
+      )}
+
+      {/* Ergebnis-Filter (Gebiet & Telefon) */}
+      {allLeads.length > 0 && (
+        <Card className="mt-5 p-0">
+          <div className="flex flex-wrap items-end gap-x-5 gap-y-3 px-4 py-3.5">
+            <FilterGroup label="Telefon">
+              <Segmented
+                value={phoneFilter}
+                onChange={(v) => setPhoneFilter(v as PhoneFilter)}
+                options={[
+                  { value: "all", label: "Alle" },
+                  { value: "with", label: "mit Tel." },
+                  { value: "mobile", label: "Mobil" },
+                  { value: "landline", label: "Festnetz" },
+                ]}
+              />
+            </FilterGroup>
+
+            <FilterGroup label="Website">
+              <Segmented
+                value={websiteFilter}
+                onChange={(v) => setWebsiteFilter(v as WebsiteFilter)}
+                options={[
+                  { value: "all", label: "Alle" },
+                  { value: "without", label: "ohne (heiß)" },
+                  { value: "with", label: "mit" },
+                ]}
+              />
+            </FilterGroup>
+
+            <FilterGroup label="PLZ-Gebiet">
+              <input
+                value={plzFilter}
+                onChange={(e) =>
+                  setPlzFilter(e.target.value.replace(/\D/g, "").slice(0, 5))
+                }
+                placeholder="z.B. 30"
+                inputMode="numeric"
+                className="w-24 rounded-[var(--radius-sm)] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2.5 py-1.5 text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+              />
+            </FilterGroup>
+
+            <FilterGroup label="Suche">
+              <input
+                value={textFilter}
+                onChange={(e) => setTextFilter(e.target.value)}
+                placeholder="Firma, Ort, Gewerk…"
+                className="w-48 rounded-[var(--radius-sm)] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2.5 py-1.5 text-[12.5px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+              />
+            </FilterGroup>
+
+            <div className="ml-auto self-center text-[11.5px] text-[var(--color-fg-mute)]">
+              {leads.length} von {allLeads.length}
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Übernehmen-Leiste */}
@@ -402,7 +507,23 @@ export default function LeadsFinderPage() {
                       <Badge variant="neutral">{SOURCE_LABELS[l.source]}</Badge>
                     </td>
                     <td className="px-4 py-3 font-mono text-[12.5px] text-[var(--color-fg-dim)]">
-                      {l.phone ?? "—"}
+                      {l.phone ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          {l.phone}
+                          {l.phoneType === "mobile" && (
+                            <span className="rounded-full bg-[#e6f7ea] px-1.5 py-0.5 font-sans text-[9.5px] font-medium tracking-wide text-[#1a7f37]">
+                              MOBIL
+                            </span>
+                          )}
+                          {l.phoneType === "landline" && (
+                            <span className="rounded-full bg-[var(--color-surface-2)] px-1.5 py-0.5 font-sans text-[9.5px] font-medium tracking-wide text-[var(--color-fg-mute)]">
+                              FESTNETZ
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3 text-[12.5px]">
                       {l.website ? (
@@ -470,5 +591,54 @@ function Th({
     >
       {children}
     </th>
+  );
+}
+
+function FilterGroup({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[9.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Segmented({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <div className="inline-flex rounded-[var(--radius-sm)] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 p-0.5">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className={
+              "rounded-[calc(var(--radius-sm)-2px)] px-2.5 py-1 text-[11.5px] transition-colors " +
+              (active
+                ? "bg-[var(--color-copper-500)] text-white"
+                : "text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]")
+            }
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

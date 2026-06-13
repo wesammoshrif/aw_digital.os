@@ -1,10 +1,15 @@
 /**
- * Leads-Finder-Quelle: Kleinanzeigen.de — STUB.
+ * Leads-Finder-Quelle: Kleinanzeigen.de — Offline-Skript-Pfad.
  *
- * Kleinanzeigen bietet KEINE offizielle API, und direktes Scrapen verstößt
- * gegen die AGB (zudem Anti-Bot-Schutz). Anbindung erst über einen legalen
- * Scraping-/Datendienst sinnvoll. Bis dahin meldet der Adapter ehrlich
- * "unavailable" — kein Fake, keine erfundenen Daten.
+ * Kleinanzeigen hat keine offizielle API und aktiven Bot-Schutz (DataDome).
+ * Live-Scraping aus der Web-App ist daher nicht eingebaut. Stattdessen gibt es
+ * ein eigenständiges, rechtlich abgesichertes Skript:
+ *
+ *     scripts/scrape-kleinanzeigen.ts   (Playwright, nur Gewerbe-Impressum)
+ *
+ * Ablauf: Skript offline laufen lassen → erzeugte JSON über den normalen
+ * Import übernehmen. Dieser Adapter meldet darum ehrlich "unavailable" und
+ * erfindet keine Daten.
  */
 import type { SourceResult } from "../types";
 
@@ -14,7 +19,7 @@ export async function findKleinanzeigen(): Promise<SourceResult> {
     status: "unavailable",
     count: 0,
     message:
-      "Kleinanzeigen hat keine offizielle API. Anbindung über einen legalen Scraping-Dienst noch offen.",
+      "Kein Live-Scraping (Bot-Schutz). Offline via scripts/scrape-kleinanzeigen.ts → JSON importieren.",
     leads: [],
   };
 }

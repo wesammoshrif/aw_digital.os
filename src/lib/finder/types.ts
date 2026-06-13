@@ -17,6 +17,7 @@ export interface FinderLead {
   company: string;
   trade: string | null;
   phone: string | null;
+  phoneType: "mobile" | "landline" | null; // 015x/016x/017x → mobile
   website: string | null;
   email: string | null;
   street: string | null;
