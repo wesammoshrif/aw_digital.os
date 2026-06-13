@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json()) as {
+  const body = (await req.json().catch(() => ({}))) as {
     transcript?: string;
     hook?: string | null;
     company?: string;

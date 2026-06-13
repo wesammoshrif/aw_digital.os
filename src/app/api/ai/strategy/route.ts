@@ -32,9 +32,17 @@ export async function GET() {
       messages: [{ role: "user", content: prompt }],
     });
 
-    const text = msg.content[0].type === "text" ? msg.content[0].text : "";
-    const json = JSON.parse(text);
-
+    const text = msg.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as { text: string }).text)
+      .join(" ")
+      .trim();
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return NextResponse.json({ ok: false, message: "Parse-Fehler bei der KI-Antwort." });
+    }
     return NextResponse.json({ ok: true, ...json });
   } catch (err) {
     console.error(err);

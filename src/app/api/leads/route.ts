@@ -18,7 +18,7 @@ interface NewLeadInput {
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as NewLeadInput;
+  const body = (await req.json().catch(() => ({}))) as NewLeadInput;
   if (!body.company?.trim()) {
     return NextResponse.json(
       { ok: false, error: "Firma ist Pflicht." },
@@ -62,6 +62,9 @@ export async function POST(req: NextRequest) {
       })
       .returning({ id: leads.id });
 
+    if (!row) {
+      return NextResponse.json({ ok: false, error: "Insert ohne Ergebnis" }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
     return NextResponse.json(

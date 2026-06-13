@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json()) as SummaryInput;
+  const body = (await req.json().catch(() => ({}))) as SummaryInput;
 
   if (!body.transcript?.trim()) {
     return NextResponse.json({ ok: false, message: "Kein Transkript." });

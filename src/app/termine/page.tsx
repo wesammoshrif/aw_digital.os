@@ -43,8 +43,8 @@ export default async function TerminePage() {
       title="Termine"
       eyebrow="Kalender & Erinnerungen"
       actions={
-        <ButtonLink href="/termine" variant="primary" size="sm">
-          <Calendar className="h-3.5 w-3.5" /> Neuer Termin
+        <ButtonLink href="/leads" variant="ghost" size="sm">
+          Termin im Anruf vereinbaren →
         </ButtonLink>
       }
     >

@@ -513,11 +513,19 @@ export const TRADE_PLAYBOOK: TradeCard[] = [
 export function getTradeCard(trade: string | null | undefined): TradeCard | null {
   if (!trade) return null;
   const t = trade.toLowerCase().trim();
+  if (t.length < 3) return null;
   return (
     TRADE_PLAYBOOK.find(
       (card) =>
         card.id === t ||
-        card.aliases.some((a) => t.includes(a) || a.includes(t)),
+        // Substring nur ab Mindestlänge, sonst matchen Kürzel wie "bau"
+        // versehentlich auf dachbau/holzbau/gartenbau (falsche Branchenkarte).
+        card.aliases.some(
+          (a) =>
+            a === t ||
+            (a.includes(t) && t.length >= 4) ||
+            (t.includes(a) && a.length >= 4),
+        ),
     ) ?? null
   );
 }

@@ -38,6 +38,15 @@ export function Sidebar({
 }) {
   const path = usePathname();
 
+  // Längster passender Nav-Pfad gewinnt (sonst leuchten /leads UND /leads/finder).
+  const activeHref = NAV.reduce((best, item) => {
+    const match =
+      item.href === "/"
+        ? path === "/"
+        : path === item.href || path.startsWith(item.href + "/");
+    return match && item.href.length > best.length ? item.href : best;
+  }, "");
+
   return (
     <aside className="vibrancy sticky top-0 flex h-screen w-[240px] shrink-0 flex-col border-r border-[var(--color-hairline)] px-3 py-4">
       <div className="px-2.5 pt-1 pb-5">
@@ -55,8 +64,7 @@ export function Sidebar({
 
       <nav className="flex-1 space-y-0.5">
         {NAV.map((item) => {
-          const active =
-            item.href === "/" ? path === "/" : path.startsWith(item.href);
+          const active = item.href === activeHref;
           const Icon = item.icon;
           return (
             <Link

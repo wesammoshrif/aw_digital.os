@@ -26,6 +26,11 @@ import {
 export { isMockMode } from "./mode";
 import { isMockMode } from "./mode";
 
+// Gültige UUID? Schützt DB-Queries vor Postgres-Cast-500 bei Nicht-UUID-IDs
+// (z.B. alte Mock-Links „prj-…") → liefert sauber null → notFound()/404.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 
 export async function listProjects() {
   if (isMockMode) return mockProjects;
@@ -65,6 +70,7 @@ export async function getProjectByLeadId(leadId: string) {
 
 export async function getProject(id: string) {
   if (isMockMode) return mockProjects.find((p) => p.id === id) ?? null;
+  if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { projects } = await import("@/db/schema");
   const { eq } = await import("drizzle-orm");
@@ -142,6 +148,41 @@ export async function callStats() {
   return { total, connected, connectRate, appointments, interested, avgDuration };
 }
 
+// Streak (current/record) für die Sidebar — Mock-Konstante bzw. settings.
+export async function getStreak(): Promise<{ current: number; record: number }> {
+  if (isMockMode) return { current: STREAK.current, record: STREAK.record };
+  try {
+    const { db } = await import("@/db");
+    const { settings } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [s] = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.ownerId, OWNER_ID))
+      .limit(1);
+    return { current: s?.streakDays ?? 0, record: s?.streakRecord ?? 0 };
+  } catch {
+    return { current: 0, record: 0 };
+  }
+}
+
+// Anrufe pro Tag der letzten 7 Tage (für die Wochen-Sparkline) — echte Daten.
+async function weeklyCallsDb(anchor: Date): Promise<number[]> {
+  const calls = await listCalls();
+  const days: number[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(anchor);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    days.push(
+      calls.filter(
+        (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === key,
+      ).length,
+    );
+  }
+  return days;
+}
+
 
 // ── Leads ────────────────────────────────────────────────────────
 
@@ -169,6 +210,7 @@ export async function listLeads(opts?: {
 
 export async function getLead(id: string) {
   if (isMockMode) return mockLeads.find((l) => l.id === id) ?? null;
+  if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { leads } = await import("@/db/schema");
   const { eq } = await import("drizzle-orm");
@@ -223,6 +265,7 @@ export async function listAudits() {
 
 export async function getAudit(id: string) {
   if (isMockMode) return mockAudits.find((a) => a.id === id) ?? null;
+  if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { audits } = await import("@/db/schema");
   const { eq } = await import("drizzle-orm");
@@ -385,7 +428,7 @@ export async function dashboardSummary() {
     proposalCount,
     mrr,
     pipeline,
-    weeklyCalls: callsThisWeek(),
+    weeklyCalls: isMockMode ? callsThisWeek() : await weeklyCallsDb(now),
     streak,
     upcomingAppointments: upcoming.length,
     nextAppt,

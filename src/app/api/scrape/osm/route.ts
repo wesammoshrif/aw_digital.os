@@ -19,7 +19,7 @@ import { isNull, and, eq } from "drizzle-orm";
 type RawLead = OsmLeadRaw & { contactName?: string | null };
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as { city?: string; trades?: string[] };
+  const body = (await req.json().catch(() => ({}))) as { city?: string; trades?: string[] };
   const city = body.city ?? "Hannover";
   const trades = body.trades ?? ["dachdecker", "maler", "elektriker"];
   const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;

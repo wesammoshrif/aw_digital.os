@@ -75,10 +75,10 @@ export default async function HomePage() {
             <div className="text-[12.5px] font-medium text-[var(--color-fg)]">
               Diese Woche
             </div>
-            <Badge variant="neutral">Ziel 100</Badge>
+            <Badge variant="neutral">Ziel {data.streak.todayTarget}/Tag</Badge>
           </div>
           <div className="h-[118px]">
-            <WeekSparkline values={data.weeklyCalls} target={20} />
+            <WeekSparkline values={data.weeklyCalls} target={data.streak.todayTarget} />
           </div>
         </Card>
       </section>

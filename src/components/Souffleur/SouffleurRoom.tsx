@@ -666,7 +666,9 @@ export function SouffleurRoom({
         window.location.origin,
       );
     } catch {}
-    window.close();
+    // Erst die Nachricht zustellen lassen, dann schließen — sonst kann
+    // window.close() den sendenden Context abreißen, bevor postMessage greift.
+    setTimeout(() => window.close(), 60);
   }
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");

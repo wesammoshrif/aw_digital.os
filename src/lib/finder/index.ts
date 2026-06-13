@@ -18,8 +18,14 @@ import { findBranchenbuch } from "./sources/branchenbuch";
 
 function dedupKey(l: FinderLead): string {
   const co = l.company.toLowerCase().replace(/[^a-z0-9äöüß]/g, "");
-  const ph = (l.phone ?? "").replace(/\D/g, "");
-  return ph ? `${co}|${ph}` : `${co}|${(l.city ?? "").toLowerCase()}`;
+  // Letzte 9 Ziffern → normalisiert +49 / 0049 / national auf denselben Key
+  // (korrekte Cross-Source-Dedup über Telefon).
+  const ph = (l.phone ?? "").replace(/\D/g, "").slice(-9);
+  // Ohne Telefon: externalId mit rein, sonst kollidieren verschiedene Betriebe
+  // mit gleichem Namen in derselben Stadt und ein echter Lead geht verloren.
+  return ph
+    ? `${co}|${ph}`
+    : `${co}|${(l.city ?? "").toLowerCase()}|${l.externalId ?? ""}`;
 }
 
 // Bei Duplikaten den reicheren Datensatz behalten (Telefon schlägt kein-Telefon,

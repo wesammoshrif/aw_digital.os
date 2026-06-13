@@ -311,8 +311,11 @@ export const PLAYBOOK: Move[] = [
     label: "Termin setzen",
     // Erweitert um Wochentage und natürliche Terminzusagen ("Donnerstag um drei",
     // "nächste Woche Mittwoch hätte ich Zeit") — Kunden sagen am Telefon nie das Wort "Termin".
+    // Bewusst OHNE blanke Wochentage — „Donnerstag hab ich keine Zeit" darf
+    // nicht als Abschluss-Signal den Zeit-Einwand überschatten. Wochentage
+    // kommen über „nächste woche" + Terminvokabular trotzdem durch.
     trigger:
-      /\b(termin|treffen|videocall|zoom|wann können|machen wir|passt( mir)?|einverstanden|ok machen|hätte (ich )?zeit|würde (mir )?(gehen|passen)|nächste woche|(montag|dienstag|mittwoch|donnerstag|freitag)s?\b)/i,
+      /\b(termin|treffen|videocall|zoom|wann können|machen wir|einverstanden|ok machen wir|hätte (ich )?(da )?zeit|würde (mir )?(gehen|passen)|nächste woche)\b/i,
     line: "Perfekt. Ich trage uns für [Tag] um [Uhrzeit] ein und schicke Ihnen gleich die Einladung plus den ersten Entwurf. Auf welche E-Mail darf das?",
     alts: [
       "Top. Ich bestätige per SMS und Mail. Wie ist Ihre beste Nummer und E-Mail?",

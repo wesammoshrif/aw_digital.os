@@ -198,12 +198,17 @@ async function fetchHtml(url: string): Promise<string> {
 
 function extractFooterYear(html: string | null): number | null {
   if (!html) return null;
-  // Bei "© 2009 - 2026" das HÖCHSTE Jahr im Copyright-Kontext nehmen,
-  // nicht das erste — sonst meldet der Audit "Footer steht noch 2009".
-  const contexts =
-    html.match(/(?:©|&copy;|copyright)[^<]{0,80}/gi) ?? [];
+  // Nur den echten <footer>-Bereich auswerten, falls vorhanden — sonst matcht
+  // ein „© Adobe Stock 2018" in Bild-Credits und liefert ein falsches Jahr.
+  const footerMatch = html.match(/<footer[\s\S]*?<\/footer>/i);
+  const scope = footerMatch ? footerMatch[0] : html;
+  // Bei "© 2009 - 2026" das HÖCHSTE Jahr nehmen, nicht das erste.
+  const contexts = scope.match(/(?:©|&copy;|copyright)[^<]{0,80}/gi) ?? [];
   const years: number[] = [];
   for (const ctx of contexts) {
+    // Stock-/Foto-Credits ausschließen — sagen nichts über die Aktualität.
+    if (/stock|getty|adobe|unsplash|shutterstock|istock|pexels|foto:|photo:|bild:/i.test(ctx))
+      continue;
     for (const m of ctx.matchAll(/\b(?:19|20)\d{2}\b/g)) {
       years.push(parseInt(m[0], 10));
     }

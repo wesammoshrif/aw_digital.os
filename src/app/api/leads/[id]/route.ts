@@ -14,7 +14,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const body = (await req.json()) as {
+  const body = (await req.json().catch(() => ({}))) as {
     status?: string;
     attempts?: number;
     nextStep?: string;

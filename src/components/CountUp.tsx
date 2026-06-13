@@ -21,6 +21,7 @@ export function CountUp({
   duration?: number;
   className?: string;
 }) {
+  const safe = Number.isFinite(value) ? value : 0;
   const [display, setDisplay] = useState(0);
   const fromRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -30,7 +31,7 @@ export function CountUp({
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduce) {
-      setDisplay(value);
+      setDisplay(safe);
       return;
     }
     const from = fromRef.current;
@@ -39,16 +40,16 @@ export function CountUp({
       const t = Math.min(1, (now - start) / duration);
       // easeOutCubic
       const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(from + (value - from) * eased);
+      setDisplay(from + (safe - from) * eased);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
-      else fromRef.current = value;
+      else fromRef.current = safe;
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      fromRef.current = value;
+      fromRef.current = safe;
     };
-  }, [value, duration]);
+  }, [safe, duration]);
 
   const formatted = display.toLocaleString("de-DE", {
     minimumFractionDigits: decimals,

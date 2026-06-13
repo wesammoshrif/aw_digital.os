@@ -19,7 +19,7 @@ interface NewInvoiceInput {
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as NewInvoiceInput;
+  const body = (await req.json().catch(() => ({}))) as NewInvoiceInput;
 
   if (
     !body.leadId?.toString().trim() ||
@@ -77,6 +77,9 @@ export async function POST(req: NextRequest) {
       })
       .returning({ id: invoices.id });
 
+    if (!row) {
+      return NextResponse.json({ ok: false, error: "Insert ohne Ergebnis" }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
     return NextResponse.json(

@@ -35,7 +35,7 @@ interface NewCallInput {
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as NewCallInput;
+  const body = (await req.json().catch(() => ({}))) as NewCallInput;
 
   if (!body.leadId?.trim()) {
     return NextResponse.json(
