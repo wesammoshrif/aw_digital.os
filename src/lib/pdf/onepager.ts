@@ -13,6 +13,12 @@ interface OnepagerLead {
   trade?: string | null;
 }
 
+interface SeoCheckLite {
+  label: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+}
+
 interface OnepagerAudit {
   websiteUrl: string;
   mobileScore?: number | null;
@@ -25,6 +31,17 @@ interface OnepagerAudit {
   painScore?: number | null;
   hookText?: string | null;
   createdAt?: Date | null;
+  // Volle Audit-Daten aus dem jsonb-Feld (Lighthouse + SEO-Report).
+  rawResult?: {
+    lighthouse?: { seo?: number | null } | null;
+    seo?: {
+      score: number;
+      grade: string;
+      failCount: number;
+      warnCount: number;
+      checks?: SeoCheckLite[];
+    } | null;
+  } | null;
 }
 
 function esc(s: string): string {
@@ -64,6 +81,31 @@ export function renderOnepagerHtml(
   });
   const lcp = audit?.lcpMs != null ? (audit.lcpMs / 1000).toFixed(1).replace(".", ",") : null;
 
+  // SEO-Abschnitt (nur wenn ein SEO-Report im jsonb-Feld liegt).
+  const seo = audit?.rawResult?.seo ?? null;
+  const issues = (seo?.checks ?? [])
+    .filter((c) => c.status !== "pass")
+    .slice(0, 6);
+  const seoSection =
+    seo != null
+      ? `
+    <h2>SEO &amp; Auffindbarkeit bei Google</h2>
+    <div class="seohead">
+      <span class="grade" style="background:${scoreColor(seo.score)}">${seo.grade}</span>
+      <span class="small">SEO-Score <strong>${seo.score}/100</strong> · ${seo.failCount} klare Probleme, ${seo.warnCount} Verbesserungen</span>
+    </div>
+    ${
+      issues.length
+        ? `<div class="issues">${issues
+            .map(
+              (c) =>
+                `<div class="issue"><span class="dot ${c.status}"></span><span><strong>${esc(c.label)}:</strong> ${esc(c.detail)}</span></div>`,
+            )
+            .join("")}</div>`
+        : `<p class="small">Keine gravierenden SEO-Mängel gefunden.</p>`
+    }`
+      : "";
+
   const body = audit
     ? `
     <p class="meta">Geprüfte Website: <strong>${esc(audit.websiteUrl)}</strong> · Stand: ${date}</p>
@@ -101,6 +143,7 @@ export function renderOnepagerHtml(
         <p class="small">Über 70 Prozent der Suchanfragen nach Handwerkern kommen vom Handy. Wer dort langsam lädt oder schlecht lesbar ist, verliert Anfragen an die Konkurrenz, ohne es zu merken.</p>
       </div>
     </div>
+    ${seoSection}
 
     <h2>Unsere Empfehlung</h2>
     <ol class="rec">
@@ -144,6 +187,12 @@ export function renderOnepagerHtml(
   .hook { font-size: 14.5px; font-style: italic; line-height: 1.5; border-left: 3px solid #0071e3; background: #eff5ff; padding: 10px 14px; border-radius: 6px; color: #0a3977; margin-bottom: 10px; }
   .small { font-size: 12.5px; color: #515154; line-height: 1.55; }
   .rec { margin-left: 18px; font-size: 13.5px; line-height: 1.7; }
+  .seohead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .grade { display: inline-flex; width: 34px; height: 34px; border-radius: 9px; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .issues { display: grid; gap: 6px; }
+  .issue { display: flex; align-items: baseline; gap: 9px; font-size: 13px; line-height: 1.45; }
+  .issue .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+  .issue .dot.warn { background: #b25000; } .issue .dot.fail { background: #d70015; }
   .footer { margin-top: 34px; border-top: 1px solid #e8e8ed; padding-top: 14px; display: flex; justify-content: space-between; font-size: 11px; color: #86868b; }
   .printbar { max-width: 760px; margin: 0 auto 16px; display: flex; justify-content: flex-end; }
   .printbar button { background: #0071e3; color: #fff; border: 0; border-radius: 999px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer; }

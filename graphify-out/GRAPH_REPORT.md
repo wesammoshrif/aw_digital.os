@@ -1,13 +1,13 @@
 # Graph Report - .  (2026-06-13)
 
 ## Corpus Check
-- 58 files · ~60,838 words
+- 19 files · ~66,940 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 705 nodes · 1508 edges · 51 communities (41 shown, 10 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 37 edges (avg confidence: 0.79)
-- Token cost: 0 input · 58,279 output
+- 779 nodes · 1641 edges · 52 communities (42 shown, 10 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 43 edges (avg confidence: 0.8)
+- Token cost: 0 input · 50,025 output
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Finanzen & Rechnungs-UI|Finanzen & Rechnungs-UI]]
@@ -47,11 +47,12 @@
 - [[_COMMUNITY_Community 34|Community 34]]
 - [[_COMMUNITY_Community 35|Community 35]]
 - [[_COMMUNITY_Community 36|Community 36]]
-- [[_COMMUNITY_Community 38|Community 38]]
+- [[_COMMUNITY_Community 37|Community 37]]
 - [[_COMMUNITY_Community 39|Community 39]]
-- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 40|Community 40]]
 - [[_COMMUNITY_Community 45|Community 45]]
 - [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `columns` - 59 edges
@@ -66,110 +67,110 @@
 10. `ButtonLink()` - 15 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `PDF Onepager (lib/pdf/onepager.ts)` --references--> `Website-Audit-Engine (Pain-Score + Hook)`  [INFERRED]
+  src/lib/pdf/onepager.ts → ROADMAP.md
+- `Website-Audit-Engine (Pain-Score + Hook)` --shares_data_with--> `audits`  [INFERRED]
+  ROADMAP.md → README.md
 - `VoIP-Brücke (Asterisk WebRTC↔SIP, Vapi-Nachbau)` --semantically_similar_to--> `tel:-Link + Zoiper Stopgap (System-Telefon)`  [INFERRED] [semantically similar]
   voip-bridge/README.md → BERICHT.md
-- `invoices (quotes + invoices)` --shares_data_with--> `leads`  [INFERRED]
-  BERICHT.md → README.md
-- `E-Mail-Versand (src/lib/email.ts, Resend)` --shares_data_with--> `Termine & Termin-Erinnerung (appointments)`  [INFERRED]
-  HANDOFF.md → BERICHT.md
-- `AW Digital OS` --references--> `Next.js Agent Rules`  [EXTRACTED]
-  README.md → AGENTS.md
-- `Souffleur (live sales coaching)` --calls--> `Anthropic Claude (Sonnet 4.6 / Haiku 4.5)`  [INFERRED]
-  BERICHT.md → README.md
+- `Quellen-Katalog (Source Catalog)` --references--> `Branchenbuch Adapter (branchenbuch.ts)`  [EXTRACTED]
+  BERICHT.md → src/lib/finder/sources/branchenbuch.ts
+- `Quellen-Katalog (Source Catalog)` --references--> `Google Places Adapter (googlePlaces.ts)`  [EXTRACTED]
+  BERICHT.md → src/lib/finder/sources/googlePlaces.ts
 
 ## Import Cycles
 - None detected.
 
 ## Hyperedges (group relationships)
-- **Call-Flow Pipeline: Audit → Souffleur → Disposition → Rechnung** — audit_engine, souffleur, call_flow, invoices_quotes [INFERRED 0.85]
-- **VoIP-Brücke Stack: Browser-Dialer ↔ Asterisk ↔ easybell-Trunk** — webrtc_dialer, asterisk, easybell_trunk, voip_bridge [INFERRED 0.85]
-- **Automatik-Engine: Cron-Tick führt Reminder, Mail-Versand und Follow-up-Kadenz aus** — cron_tick, email_resend, follow_up_cadence, appointments [INFERRED 0.75]
+- **Finder Source Adapters → FinderLead** — finder_source_osm, finder_source_googleplaces, finder_source_handelsregister, finder_source_kleinanzeigen, finder_source_branchenbuch, finder_index, finderlead_type [INFERRED 0.95]
+- **Audit Pipeline (Lighthouse + SEO → UI + PDF)** — audit_website, audit_lighthouse, audit_seo, audit_ui, audit_onepager [INFERRED 0.85]
+- **Legal Signal Constraint (BVerwG → Signal + Brief)** — bverwg_6c323, rationale_letter_contact, finder_sources, gratis_baukasten_signal [INFERRED 0.85]
 
-## Communities (51 total, 10 thin omitted)
+## Communities (52 total, 10 thin omitted)
 
 ### Community 0 - "Finanzen & Rechnungs-UI"
 Cohesion: 0.06
 Nodes (46): HomePage(), Invoice, eur(), FinancesPage(), STATUS_LABEL, TYPE_LABEL, PATCH(), sendEmail() (+38 more)
 
 ### Community 1 - "DB-Felder (Calls/Invoices)"
+Cohesion: 0.07
+Nodes (38): dedupKey(), findLeads(), isRicher(), ImportResponse, PhoneFilter, SOURCE_CATALOG, SOURCES, TIER_BADGE (+30 more)
+
+### Community 2 - "NPM-Abhängigkeiten"
 Cohesion: 0.17
 Nodes (55): amount, cls_score, converted_invoice_id, created_at, currency, desktop_score, dispo, due_date (+47 more)
 
-### Community 2 - "NPM-Abhängigkeiten"
+### Community 3 - "Detail-Seiten & Mockup-Vorschau"
+Cohesion: 0.06
+Nodes (50): Website-Audit-Engine (Pain-Score + Hook), Google Lighthouse (4 Kategorien), PDF Onepager (lib/pdf/onepager.ts), PAGESPEED_API_KEY (ENV), attr(), finalize(), metaContent(), runSeoChecks() (+42 more)
+
+### Community 4 - "Leads-Finder"
 Cohesion: 0.04
 Nodes (45): dependencies, @anthropic-ai/sdk, class-variance-authority, clsx, drizzle-orm, fast-xml-parser, jssip, lucide-react (+37 more)
 
-### Community 3 - "Detail-Seiten & Mockup-Vorschau"
-Cohesion: 0.08
-Nodes (26): NotFound(), fmtDate(), LeadDetailPage(), MockupForLeadPage(), ProjectDetailPage(), SouffleurPage(), STATUS_LABEL, statusVariant() (+18 more)
-
-### Community 4 - "Leads-Finder"
-Cohesion: 0.11
-Nodes (24): dedupKey(), findLeads(), isRicher(), ImportResponse, SOURCES, TRADES, POST(), FinderLead (+16 more)
-
 ### Community 5 - "Telefonie-Client & Souffleur-Matcher"
-Cohesion: 0.08
-Nodes (24): JsSIPUA, JsSIPWS, RTCSession, SipConfig, SipEvents, SipStatus, matchMove(), PRIORITY (+16 more)
+Cohesion: 0.07
+Nodes (25): EasybellSipClient, JsSIPUA, JsSIPWS, RTCSession, SipConfig, SipEvents, SipStatus, matchMove() (+17 more)
 
 ### Community 6 - "OS-Konzepte & Call-Flow (Docs)"
-Cohesion: 0.10
-Nodes (29): Termine & Termin-Erinnerung (appointments), Asterisk (Docker, andrius/asterisk, network_mode host), Website-Audit-Engine (Pain-Score + Hook), AW Digital OS (Cold-Call-Akquise-Cockpit), BERICHT.md — Status-Bericht & Go-Live-Checkliste, Call-Flow (CallMode → Souffleur → Dispo → Cadence), calls-Persistenz & Anruf-Statistik, Anthropic Claude Haiku 4.5 (Souffleur-Tipps/Summaries) (+21 more)
+Cohesion: 0.16
+Nodes (38): columnsFrom, columnsTo, onDelete, onUpdate, tableFrom, tableTo, dialect, activities_lead_id_leads_id_fk (+30 more)
 
 ### Community 7 - "Architektur-Konzepte (Mock/WebRTC/KI)"
-Cohesion: 0.10
-Nodes (26): Next.js Agent Rules, api/ai/strategy (Claude Haiku), DATABASE_URL, Deepgram (transcription), easybell REST Click-to-Call API (removed), invoices (quotes + invoices), Mock Mode (isMockMode), Souffleur (live sales coaching) (+18 more)
+Cohesion: 0.11
+Nodes (23): NotFound(), fmtDate(), LeadDetailPage(), MockupForLeadPage(), ProjectDetailPage(), SouffleurPage(), STATUS_LABEL, statusVariant() (+15 more)
 
 ### Community 8 - "DB-Migration & Indizes"
-Cohesion: 0.21
-Nodes (25): dialect, activities_lead_idx, activities_owner_type_idx, invoices_lead_idx, invoices_number_idx, invoices_owner_status_idx, concurrently, isUnique (+17 more)
+Cohesion: 0.14
+Nodes (16): Flag(), ScoreBar(), LeadsFilter(), STATUSES, PainCell(), STATUS_DOT, STATUS_LABEL, STATUS_OPTIONS (+8 more)
 
 ### Community 9 - "DB-Schema (Drizzle)"
-Cohesion: 0.08
-Nodes (24): Auth/Login & RLS-Policies (P0 fürs Online-Gehen), activities, activityTypeEnum, Audit, Call, callDispoEnum, calls, invoiceKindEnum (+16 more)
+Cohesion: 0.09
+Nodes (27): Next.js Agent Rules, api/ai/strategy (Claude Haiku), DATABASE_URL, Deepgram (transcription), easybell REST Click-to-Call API (removed), invoices (quotes + invoices), Mock Mode (isMockMode), Souffleur (live sales coaching) (+19 more)
 
 ### Community 10 - "Impressum-Anreicherung"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (19): cleanPhone(), enrichFromWebsite(), EnrichResult, extractContactName(), extractEmail(), extractPhone(), fetchHtml(), isPlausibleEmail() (+11 more)
 
 ### Community 11 - "Audit-UI & Dialer"
-Cohesion: 0.16
-Nodes (12): Flag(), ScoreBar(), cn(), AuditResult, ScoreTile(), SipDialer(), StatusPill(), FeedItem() (+4 more)
+Cohesion: 0.13
+Nodes (24): Termine & Termin-Erinnerung (appointments), Asterisk (Docker, andrius/asterisk, network_mode host), AW Digital OS (Cold-Call-Akquise-Cockpit), BERICHT.md — Status-Bericht & Go-Live-Checkliste, Call-Flow (CallMode → Souffleur → Dispo → Cadence), calls-Persistenz & Anruf-Statistik, Anthropic Claude Haiku 4.5 (Souffleur-Tipps/Summaries), Scheduler/Cron-Tick (/api/cron/tick) (+16 more)
 
 ### Community 12 - "Termine-UI & Erinnerung"
-Cohesion: 0.18
-Nodes (10): Shell(), STATUS_LABEL, fmtDateTime(), ReminderBadge(), ReminderState, Badge(), DOT, VARIANTS (+2 more)
+Cohesion: 0.13
+Nodes (10): Shell(), NAV, Sidebar(), NewProject, LeadsPage(), listLeads(), STATUS_OPTIONS, COLUMNS (+2 more)
 
 ### Community 13 - "TypeScript-Config"
 Cohesion: 0.10
-Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+11 more)
+Nodes (20): activities, activityTypeEnum, Audit, Call, callDispoEnum, calls, invoiceKindEnum, invoices (+12 more)
 
 ### Community 14 - "Formulare & UI-Primitiven"
+Cohesion: 0.10
+Nodes (19): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+11 more)
+
+### Community 15 - "Dashboard-Widgets"
 Cohesion: 0.12
 Nodes (10): TRADES, TRADES, Button, ButtonProps, CommonProps, LinkProps, Size, SIZES (+2 more)
 
-### Community 15 - "Dashboard-Widgets"
-Cohesion: 0.15
-Nodes (7): CountUp(), PainScoreCell(), QueueItem(), scoreVariant(), TRADE_LABEL, TargetRing(), WeekSparkline()
-
 ### Community 16 - "Website-Audit-Engine"
-Cohesion: 0.23
-Nodes (12): POST(), AuditResult, buildHook(), detectTechStack(), extractFooterYear(), fetchHtml(), fetchPagespeed(), normalize() (+4 more)
+Cohesion: 0.15
+Nodes (7): CountUp(), PainScoreCell(), QueueItem(), scoreVariant(), TargetRing(), WeekSparkline(), TRADE_LABELS
 
 ### Community 17 - "API-Routen & DB-Client"
-Cohesion: 0.14
-Nodes (10): ACTIVITY_TYPES, POST(), AuditsPage(), db, DbClient, NewLeadInput, POST(), listAudits() (+2 more)
+Cohesion: 0.21
+Nodes (15): buildSearchUrl(), classifyPhone(), CONFIG, extractCompany(), extractEmail(), extractPhone(), extractPostal(), extractStreet() (+7 more)
 
 ### Community 18 - "Shell & Navigation"
-Cohesion: 0.18
-Nodes (5): NAV, Sidebar(), NewProject, STATUS_OPTIONS, Logo()
+Cohesion: 0.13
+Nodes (12): POST(), AuditsPage(), db, DbClient, audits, leads, NewLeadInput, POST() (+4 more)
 
 ### Community 19 - "DB-Fremdschlüssel"
-Cohesion: 0.54
-Nodes (13): columnsFrom, columnsTo, onDelete, onUpdate, tableFrom, tableTo, activities_lead_id_leads_id_fk, appointments_lead_id_leads_id_fk (+5 more)
+Cohesion: 0.23
+Nodes (6): STATUS_LABEL, Badge(), DOT, VARIANTS, ButtonLink(), CardHeader()
 
 ### Community 20 - "Leads-Tabelle & Filter"
-Cohesion: 0.20
-Nodes (6): LeadsFilter(), STATUSES, PainCell(), STATUS_DOT, STATUS_LABEL, STATUS_OPTIONS
+Cohesion: 0.18
+Nodes (5): AuditResult, LighthouseScores, ScoreTile(), SeoCheck, SeoReport
 
 ### Community 21 - "Einstellungen & Telefonie-Setup"
 Cohesion: 0.27
@@ -188,52 +189,56 @@ Cohesion: 0.27
 Nodes (7): NewLead, HtmlLeadSchema, mapHtmlExport(), SCORE_MAP, STATUS_MAP, POST(), toSource()
 
 ### Community 25 - "Handelsregister-Feed"
-Cohesion: 0.31
-Nodes (6): GET(), FEEDS, fetchAllNeugruendungen(), filterHandwerk(), HandelsregisterEvent, HANDWERK_KEYWORDS
-
-### Community 26 - "Neue-Rechnung-Seite"
 Cohesion: 0.22
 Nodes (3): INVOICE_STATUS, QUOTE_STATUS, TYPE_OPTIONS
 
-### Community 28 - "Pipeline-Kanban"
-Cohesion: 0.40
-Nodes (4): LeadsPage(), listLeads(), COLUMNS, PipelinePage()
+### Community 26 - "Neue-Rechnung-Seite"
+Cohesion: 0.29
+Nodes (3): pickTemplate(), TemplateBrief, TemplateId
 
-### Community 29 - "Root-Layout & Fonts"
+### Community 27 - "Easybell-SIP-Client"
 Cohesion: 0.40
 Nodes (3): geistMono, inter, metadata
 
-### Community 30 - "Calls-API"
+### Community 28 - "Pipeline-Kanban"
 Cohesion: 0.40
 Nodes (3): Dispo, DISPO_VALUES, NewCallInput
 
-### Community 31 - "Aktivitäts-Timeline"
+### Community 29 - "Root-Layout & Fonts"
 Cohesion: 0.40
 Nodes (4): fmt, ICONS, TONES, Activity
+
+### Community 30 - "Calls-API"
+Cohesion: 0.60
+Nodes (3): fmtDateTime(), ReminderBadge(), ReminderState
+
+### Community 31 - "Aktivitäts-Timeline"
+Cohesion: 0.50
+Nodes (4): Auth/Login & RLS-Policies (P0 fürs Online-Gehen), Mock vs. Production-Modus (isMockMode / DATABASE_URL), Supabase (Postgres EU, Session-Pooler), Supabase MCP (HTTP/OAuth für Claude Code)
 
 ### Community 32 - "Drizzle-Journal"
 Cohesion: 0.50
 Nodes (3): dialect, entries, version
 
 ## Knowledge Gaps
-- **191 isolated node(s):** `version`, `configurations`, `sentences`, `moves`, `sentences` (+186 more)
+- **208 isolated node(s):** `version`, `configurations`, `sentences`, `moves`, `sentences` (+203 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Trigger Events` connect `Architektur-Konzepte (Mock/WebRTC/KI)` to `Finanzen & Rechnungs-UI`, `DB-Schema (Drizzle)`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
-- **Why does `cn()` connect `Audit-UI & Dialer` to `Telefonie-Client & Souffleur-Matcher`, `Termine-UI & Erinnerung`, `Formulare & UI-Primitiven`, `Dashboard-Widgets`, `Shell & Navigation`, `Leads-Tabelle & Filter`, `Einstellungen & Telefonie-Setup`, `Call-Modus & Kadenz-Logik`, `Aktivitäts-Timeline`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
-- **Why does `POST()` connect `Impressum-Anreicherung` to `API-Routen & DB-Client`, `DB-Schema (Drizzle)`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `cn()` connect `DB-Migration & Indizes` to `Telefonie-Client & Souffleur-Matcher`, `Termine-UI & Erinnerung`, `Dashboard-Widgets`, `Website-Audit-Engine`, `DB-Fremdschlüssel`, `Leads-Tabelle & Filter`, `Einstellungen & Telefonie-Setup`, `Call-Modus & Kadenz-Logik`, `Root-Layout & Fonts`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Why does `Trigger Events` connect `DB-Schema (Drizzle)` to `Finanzen & Rechnungs-UI`, `TypeScript-Config`?**
+  _High betweenness centrality (0.031) - this node is a cross-community bridge._
+- **Why does `POST()` connect `Impressum-Anreicherung` to `Shell & Navigation`, `TypeScript-Config`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **What connects `version`, `configurations`, `sentences` to the rest of the system?**
-  _191 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _210 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Finanzen & Rechnungs-UI` be split into smaller, more focused modules?**
   _Cohesion score 0.06398730830248546 - nodes in this community are weakly interconnected._
-- **Should `NPM-Abhängigkeiten` be split into smaller, more focused modules?**
-  _Cohesion score 0.0425531914893617 - nodes in this community are weakly interconnected._
+- **Should `DB-Felder (Calls/Invoices)` be split into smaller, more focused modules?**
+  _Cohesion score 0.06516290726817042 - nodes in this community are weakly interconnected._
 - **Should `Detail-Seiten & Mockup-Vorschau` be split into smaller, more focused modules?**
-  _Cohesion score 0.08097165991902834 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06009783368273934 - nodes in this community are weakly interconnected._

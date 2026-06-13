@@ -151,6 +151,35 @@ export default async function LeadDetailPage({
               <p className="mt-3 text-[12px] leading-snug text-[var(--color-fg-mute)]">
                 Niedriger Score = größerer Verkaufs-Hebel.
               </p>
+              {(() => {
+                const ap = lead.auditPayload as {
+                  seo?: { score: number; grade: string } | null;
+                  lighthouse?: { seo?: number | null } | null;
+                } | null;
+                if (!ap?.seo) return null;
+                return (
+                  <div className="mt-3 flex items-center gap-2 border-t border-[var(--color-hairline)] pt-3 text-[12px]">
+                    <span className="text-[var(--color-fg-mute)]">SEO-Check:</span>
+                    <span
+                      className={
+                        "rounded-md px-1.5 py-0.5 text-[11px] font-bold text-white " +
+                        (ap.seo.score >= 75
+                          ? "bg-[#1a7f37]"
+                          : ap.seo.score >= 50
+                            ? "bg-[#b25000]"
+                            : "bg-[#d70015]")
+                      }
+                    >
+                      {ap.seo.grade} · {ap.seo.score}/100
+                    </span>
+                    {ap.lighthouse?.seo != null && (
+                      <span className="text-[var(--color-fg-mute)]">
+                        Lighthouse-SEO {ap.lighthouse.seo}
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
           )}
 

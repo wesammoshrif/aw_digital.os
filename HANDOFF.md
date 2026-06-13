@@ -192,3 +192,10 @@ npm run db:clear       # alle Daten löschen (production-clean)
 - `BERICHT.md` — Status + Go-Live-Checkliste
 - `voip-bridge/README.md` — Asterisk-Brücke deployen
 - `graphify-out/graph.html` — Architektur-Wissensgraph
+
+## 11. Akquise- & Audit-Module (Stand 13.06.2026)
+- **Leads-Finder** (`src/lib/finder/`): Adapter `sources/{osm,googlePlaces,handelsregister,kleinanzeigen,branchenbuch}.ts`, alle → `FinderLead`. `index.ts` merged + entdoppelt. `builderSubdomain.ts` erkennt Gratis-Baukasten (Signal). UI `app/leads/finder/page.tsx` mit Filtern + Quellen-Katalog.
+- **Audit** (`src/lib/audit/`): `website.ts` (Lighthouse via PSI alle 4 Kategorien + Technik-Checks + Hook), `seo.ts` (17 deterministische SEO-Checks, kein KI). UI `app/audits/run/page.tsx`, Onepager `lib/pdf/onepager.ts`.
+- **Skripte**: `scripts/scrape-kleinanzeigen.ts` (Playwright-Offline-Scraper, nur Gewerbe-Impressum).
+- **ENV neu**: `PAGESPEED_API_KEY` (kostenlos, Google Cloud → PageSpeed Insights API) aktiviert die Lighthouse-Scores. Ohne Key läuft nur der regelbasierte SEO-Check.
+- **⚖️ Recht**: BVerwG 6 C 3.23 — Telefon-Kaltakquise aus Verzeichnis-Leads ist angreifbar; Quellen als Signal nutzen, Erstkontakt per Brief. Details in `app/leads/finder/page.tsx` (Rechtshinweis).

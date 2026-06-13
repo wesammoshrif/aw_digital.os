@@ -104,3 +104,22 @@ Angebote sind **Teil der Rechnungen** (eine Tabelle `invoices`, unterschieden ü
 - [ ] `api/ai/strategy` nutzt veraltetes Modell `claude-3-5-haiku-latest` (aktuell wäre `claude-haiku-4-5`).
 - [ ] Projekte/Finanzen/Termine: nur Lese-Ansichten, kein CRUD.
 - [ ] Auto-Cadence im Backend verdrahten (README-TODO).
+
+---
+
+## Update 13.06.2026 (Nachmittag) — Akquise & Audit ausgebaut
+
+**Leads-Finder**
+- **25 Gewerke** statt 9 (Overpass auf `craft=/shop=/healthcare=/amenity=` umgebaut), priorisiert nach Kaufwilligkeit (Research: Dachdecker, SHK, GaLaBau, KFZ, Fenster zuerst).
+- Ergebnis-Filter: **Telefon (Mobil/Festnetz)**, **Website (ohne = heiß)**, **PLZ-Gebiet**, **Gratis-Baukasten**, Textsuche. Mobil/Festnetz wird klassifiziert (`classifyPhone`).
+- **Gratis-Baukasten-Signal** (`src/lib/finder/builderSubdomain.ts`): markiert Leads auf jimdosite/wixsite/business.site → kein eigener Domain-Auftritt. Auch als Audit-Hook.
+- **Quellen-Katalog** mit ehrlichem Tier (Live/Signal/Skript/Lizenz/Manuell) + **Rechtshinweis**.
+
+**Audit-Engine**
+- **Volles Google Lighthouse**: Performance, Barrierefreiheit, Best Practices, **SEO** (vorher nur Performance). Braucht `PAGESPEED_API_KEY` (aktuell auskommentiert → Lighthouse sonst leer, Hinweis in der UI).
+- **Deterministischer SEO-Check** (`src/lib/audit/seo.ts`, **kein KI**): 17 gewichtete Checks (Title/Meta/H1/Canonical/OG/JSON-LD-LocalBusiness/Alt/robots.txt/Sitemap …) → Score + Note A–F. Läuft ohne Key.
+- Lighthouse-Ringe + SEO-Checkliste in `/audits/run`; SEO-Abschnitt im PDF-Onepager; SEO-Note auf der Lead-Detailseite.
+
+**Kleinanzeigen-Skript** (`scripts/scrape-kleinanzeigen.ts`, Playwright, offline) — nur Gewerbe-Impressum, kein Login-Bypass.
+
+**⚖️ Wichtig (Rechts-Check):** BVerwG 6 C 3.23 (29.01.2025) — Telefon-Kaltakquise von Leads aus öffentlichen Verzeichnissen ist ohne Einwilligung angreifbar. Quellen daher als **Signal**; rechtssicherer Erstkontakt per **Brief**. Vor produktivem Einsatz anwaltlich freigeben.
