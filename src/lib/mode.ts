@@ -1,8 +1,11 @@
 /**
- * Mock-Modus-Flag — bewusst OHNE DB-Import, damit dieses Modul auch von
- * Client-Components importiert werden kann, ohne dass `postgres`/Node-Module
- * (tls, net, fs) in den Browser-Bundle gezogen werden.
+ * Mock-Modus-Flag — funktioniert auf Server UND Client.
  *
- * Ohne DATABASE_URL läuft die App komplett auf Mock-Daten.
+ * SERVER: prüft DATABASE_URL (Node-only env var).
+ * CLIENT: prüft NEXT_PUBLIC_DB_CONNECTED (in .env.local setzen wenn DB aktiv).
+ * Beide müssen konsistent sein, damit Hydration stimmt.
  */
-export const isMockMode = !process.env.DATABASE_URL;
+export const isMockMode =
+  process.env.NEXT_PUBLIC_DB_CONNECTED === "true"
+    ? false
+    : !process.env.DATABASE_URL;

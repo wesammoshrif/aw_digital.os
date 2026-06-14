@@ -157,12 +157,12 @@ export function SipDialer({
 
       {showExperimental && (
         <div className="mt-3 space-y-3 pt-1">
-          <div className="flex items-start gap-2 rounded-lg border border-[#fde68a] bg-[#fffbeb] px-3 py-2 text-[10.5px] leading-relaxed text-[#92400e]">
+          <div className="flex items-start gap-2 rounded-lg border border-[#bbf7d0] bg-[#f0fdf4] px-3 py-2 text-[10.5px] leading-relaxed text-[#166534]">
             <Info className="h-3.5 w-3.5 shrink-0" />
             <span>
-              In-Browser-Telefonie braucht ein erreichbares easybell-WSS-Gateway
-              (Cloud Telefonanlage). Mit dem reinen SIP-Trunk schlägt die
-              WebSocket-Verbindung fehl — nutz dafür den „Anrufen"-Button oben.
+              Asterisk-Brücke aktiv (5-231-248-34.sslip.io:8089). Klick auf
+              „Trotzdem testen" startet den In-Browser-Anruf direkt über die
+              easybell Cloud-PBX — kein externes Telefon nötig.
             </span>
           </div>
           <div className="flex items-center gap-2">

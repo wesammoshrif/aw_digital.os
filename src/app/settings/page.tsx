@@ -11,9 +11,23 @@ import {
   Gauge,
   Cloud,
 } from "lucide-react";
-import { isMockMode } from "@/lib/store";
-
 export const dynamic = "force-dynamic";
+
+function isConnected(key: string): boolean {
+  switch (key) {
+    case "supabase":  return !!process.env.DATABASE_URL;
+    case "easybell":  return !!(process.env.ASTERISK_WSS || process.env.EASYBELL_SIP_USERNAME);
+    case "brevo":     return !!process.env.BREVO_API_KEY;
+    case "seven":     return !!process.env.SEVEN_API_KEY;
+    case "stripe":    return !!process.env.STRIPE_SECRET_KEY;
+    case "signwell":  return !!process.env.SIGNWELL_API_KEY;
+    case "easybill":  return !!process.env.EASYBILL_API_KEY;
+    case "claude":    return !!process.env.ANTHROPIC_API_KEY;
+    case "pagespeed": return !!process.env.PAGESPEED_API_KEY;
+    case "places":    return !!process.env.GOOGLE_PLACES_API_KEY;
+    default:          return false;
+  }
+}
 
 const INTEGRATIONS = [
   { key: "supabase", label: "Supabase", desc: "Postgres · EU/Frankfurt", icon: Database, color: "#34c759" },
@@ -83,7 +97,7 @@ export default function SettingsPage() {
           <IOSGroup header="Integrationen">
             {INTEGRATIONS.map((i) => {
               const Icon = i.icon;
-              const connected = i.key === "supabase" ? !isMockMode : false;
+              const connected = isConnected(i.key);
               return (
                 <IOSRow
                   key={i.key}
