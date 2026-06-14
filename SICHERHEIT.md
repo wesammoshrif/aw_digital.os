@@ -11,7 +11,7 @@ Audit: `security-wesam` Phase 1 (41 Befunde, adversarial verifiziert). Diese Dat
 | **Defense-in-Depth** | `requireAuth()` am Anfang JEDES Route-Handlers (Middleware ist nicht mehr die einzige Grenze) | `src/lib/api.ts`, alle `src/app/api/**/route.ts` |
 | **Timing-safe** | Passwort-/Secret-Vergleich konstantzeitig (kein `===`) | `src/lib/auth.ts` |
 | **Rate-Limit** | In-Memory-Brute-Force-Schutz pro IP (10 Fehlversuche / 5 min → 429) | `src/middleware.ts` |
-| **Deepgram-Key** | Roh-Key-Fallback entfernt — Account-Key verlässt nie den Server | `src/app/api/souffleur/deepgram-token/route.ts` |
+| **Deepgram-Key** | Sicher per Default: `/auth/grant` mintet Kurzzeit-Tokens; Roh-Key nur per opt-in `DEEPGRAM_ALLOW_RAW_KEY` (lokaler Test) | `src/app/api/souffleur/deepgram-token/route.ts` |
 | **Cron-Härtung** | `CRON_SECRET` in Production verpflichtend, timing-safe, nur noch POST | `src/app/api/cron/tick/route.ts` |
 | **IDOR-Schutz** | `ownerId`-Scope in allen `[id]`-Lese/Schreibpfaden | `src/lib/store.ts`, `leads/[id]`, `invoices/[id]/convert` |
 | **Security-Header** | CSP, HSTS, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy (Mikrofon=self) | `next.config.ts` |
@@ -30,6 +30,7 @@ Audit: `security-wesam` Phase 1 (41 Befunde, adversarial verifiziert). Diese Dat
 - **CSP** erlaubt `'unsafe-inline'`/`'unsafe-eval'` für Scripts (Next-Hydration) und `wss:` (Deepgram/SIP). Späterer Härtungsschritt: nonce-basierte strikte `script-src`.
 - **postcss (moderate)** bleibt offen — der Fix würde Next.js auf 9.3.3 herunterstufen. Niedrige Praxisrelevanz (kein Verarbeiten fremder CSS), von Dependabot getrackt.
 - **`src/lib/sip/client.ts`** ist Aschrafs Domäne — dort wurde NUR die eine PII-Log-Zeile (Rufnummer maskiert) angefasst, keine Telefonie-Logik.
+- **Deepgram-Transkription braucht einen OWNER-Key.** Der aktuelle `DEEPGRAM_API_KEY` ist nur Member-Scope → `/auth/grant` und Temp-Key-Erzeugung geben 403, also keine sicheren Kurzzeit-Tokens. Für Production einen **Owner/Admin-Key** in der Deepgram-Console erstellen und als `DEEPGRAM_API_KEY` setzen; dann läuft die Kunden-Transkription sicher (kurzlebige Tokens, Key bleibt am Server). Lokaler Test-Workaround: `DEEPGRAM_ALLOW_RAW_KEY=true` — schiebt den Roh-Key in den Browser (in der Netzwerkkonsole sichtbar), **niemals in Production**.
 
 ## ☐ Manuelle To-dos (außerhalb Code — Dashboard / Recht / Vertrag)
 
@@ -48,6 +49,9 @@ Audit: `security-wesam` Phase 1 (41 Befunde, adversarial verifiziert). Diese Dat
 
 **Monitoring**
 - [ ] **Alarmierung** einrichten (z.B. Sentry): Fehlerraten, gehäufte 401, neue Fehler.
+
+**Telefonie / Transkription**
+- [ ] **Deepgram Owner-Key** erstellen (Deepgram-Console → API Keys → Rolle Owner) und als `DEEPGRAM_API_KEY` setzen. Der Member-Key kann keine sicheren Kurzzeit-Tokens minten → sonst bleibt die Kunden-Transkription aus oder läuft nur über den unsicheren `DEEPGRAM_ALLOW_RAW_KEY`-Schalter.
 
 ## ⊘ Nicht zutreffend (architekturbedingt)
 Klassisches Supabase-RLS mit `auth.uid()`, Google/Gmail-OAuth-Härtung, `getSession`-vs-`getUser`, `SECURITY DEFINER`-`search_path` — entfallen, weil kein supabase-js/JWT und kein OAuth im Einsatz ist (reines Drizzle + Basic-Auth, Single-Org).
