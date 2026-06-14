@@ -75,6 +75,7 @@ export function SouffleurRoom({
   const [callEnded, setCallEnded] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [sysLevel, setSysLevel] = useState(0);
+  const [maybeEnded, setMaybeEnded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [aiLine, setAiLine] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -619,6 +620,47 @@ export function SouffleurRoom({
     [stopSystem],
   );
 
+  // ── Stille-Erkennung: Gesprächsende auch beim tel:-Anruf erkennen ──
+  // Der Browser hat bei tel: kein SIP-Signal, also über die Audio-Pegel:
+  // 25 s beidseitige Stille → sanfter Prompt, 45 s → automatisch stoppen.
+  // Greift nur, wenn Mikro ODER Kunden-Ton an ist (sonst kein Fehlalarm).
+  const micLevelRef = useRef(0);
+  const sysLevelRef = useRef(0);
+  const listeningRef = useRef(false);
+  const sysListeningRef = useRef(false);
+  const callEndedRef = useRef(false);
+  const stopSystemRef = useRef(stopSystem);
+  const silentSecsRef = useRef(0);
+  micLevelRef.current = micLevel;
+  sysLevelRef.current = sysLevel;
+  listeningRef.current = listening;
+  sysListeningRef.current = sysListening;
+  callEndedRef.current = callEnded;
+  stopSystemRef.current = stopSystem;
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (callEndedRef.current) {
+        silentSecsRef.current = 0;
+        return;
+      }
+      const audioOn = listeningRef.current || sysListeningRef.current;
+      const silent = micLevelRef.current < 0.05 && sysLevelRef.current < 0.05;
+      if (audioOn && silent) {
+        silentSecsRef.current += 1;
+        if (silentSecsRef.current === 25) setMaybeEnded(true);
+        if (silentSecsRef.current >= 45) {
+          setMaybeEnded(false);
+          setCallEnded(true);
+          stopSystemRef.current();
+        }
+      } else {
+        silentSecsRef.current = 0;
+        setMaybeEnded(false); // no-op wenn bereits false
+      }
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // ── Gemeinsamer Reset für den Kunden-Kontext ────────────────────
   // Wichtig: leert auch custRef + pending Haiku-Debounce, damit Test-
   // Einwände nicht in den echten Call übergehen (oder umgekehrt).
@@ -752,6 +794,32 @@ export function SouffleurRoom({
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-canvas)] text-[var(--color-fg)]">
+      {maybeEnded && (
+        <div className="fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-[var(--color-hairline)] bg-[var(--color-surface-2)] px-4 py-2 shadow-lg">
+          <span className="text-[13px] font-medium text-[var(--color-fg)]">
+            Es ist still — Gespräch vorbei?
+          </span>
+          <button
+            onClick={() => {
+              silentSecsRef.current = 0;
+              setMaybeEnded(false);
+            }}
+            className="rounded-full bg-[var(--color-surface-3)] px-3 py-1 text-[12px] font-semibold text-[var(--color-fg)] hover:bg-[var(--color-hairline)]"
+          >
+            Weiter
+          </button>
+          <button
+            onClick={() => {
+              setMaybeEnded(false);
+              setCallEnded(true);
+              stopSystem();
+            }}
+            className="rounded-full bg-[#ffeceb] px-3 py-1 text-[12px] font-semibold text-[#d70015] hover:bg-[#ffd1cf]"
+          >
+            Beenden
+          </button>
+        </div>
+      )}
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="flex items-center justify-between border-b border-[var(--color-hairline)] px-5 py-3">
         <div className="min-w-0">
