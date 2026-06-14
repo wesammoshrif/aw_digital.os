@@ -10,6 +10,8 @@
  * Scrape niemals crashen oder ausbremsen.
  */
 
+import { extractEmail, extractPhone } from "@/lib/finder/extractContacts";
+
 const FETCH_TIMEOUT_MS = 6_000;
 const USER_AGENT =
   "Mozilla/5.0 (compatible; AW-Digital-Enrich/0.1; +https://awdigital.de/impressum)";
@@ -74,61 +76,6 @@ async function fetchHtml(url: string): Promise<string | null> {
 }
 
 // ─── Extraktoren ─────────────────────────────────────────────────
-
-const IMAGE_EXTENSIONS =
-  /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif|css|js|woff2?)$/i;
-
-function extractEmail(html: string): string | null {
-  // Bevorzugt mailto:-Links (am verlässlichsten), sonst Klartext-Match.
-  const mailto = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,})/i);
-  if (mailto && isPlausibleEmail(mailto[1])) return mailto[1].toLowerCase();
-
-  const matches = html.matchAll(
-    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}/gi,
-  );
-  for (const m of matches) {
-    const candidate = m[0];
-    if (isPlausibleEmail(candidate)) return candidate.toLowerCase();
-  }
-  return null;
-}
-
-function isPlausibleEmail(email: string): boolean {
-  // "@2x"-Retina-Bildnamen und Bild-/Asset-Endungen ausschließen.
-  if (/@\d+x/i.test(email)) return false;
-  if (IMAGE_EXTENSIONS.test(email)) return false;
-  // Sentry/Wix-Platzhalter & Beispieladressen aussortieren.
-  if (/(sentry|example|domain|your-?email|wixpress)\./i.test(email)) return false;
-  return true;
-}
-
-function extractPhone(html: string): string | null {
-  // tel:-Links zuerst — am eindeutigsten.
-  const tel = html.match(/tel:([+0-9()\s./-]{6,})/i);
-  if (tel) {
-    const cleaned = cleanPhone(tel[1]);
-    if (cleaned) return cleaned;
-  }
-
-  // Deutsche Nummern im Klartext: +49…/0… mit Trennern. Defensiv: an Wort-
-  // grenzen ankern, damit lange Ziffernketten (IDs, Hashes) nicht matchen.
-  const matches = html.matchAll(
-    /(?:\+49|0049|0)[\s/().-]?\d(?:[\s/().-]?\d){5,12}/g,
-  );
-  for (const m of matches) {
-    const cleaned = cleanPhone(m[0]);
-    if (cleaned) return cleaned;
-  }
-  return null;
-}
-
-function cleanPhone(raw: string): string | null {
-  const trimmed = raw.trim().replace(/\s+/g, " ");
-  // Anzahl reiner Ziffern prüfen (defensiv gegen False Positives).
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length < 7 || digits.length > 15) return null;
-  return trimmed;
-}
 
 function extractContactName(html: string): string | null {
   const text = stripTags(html);

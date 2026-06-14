@@ -24,6 +24,11 @@
  * größte Web-Lücke + Erreichbarkeit zuerst). Unbekannte Tag-Werte liefern bei
  * Overpass einfach 0 Treffer — kein Fehler.
  */
+import { normalizePhone } from "@/lib/finder/extractContacts";
+
+// Re-Export für Abwärtskompatibilität (finder/sources nutzen `classifyPhone`).
+export { classifyPhoneType as classifyPhone } from "@/lib/finder/extractContacts";
+
 export const TRADE_MAP: Record<string, string[]> = {
   // ── Top-Prioritäten (hoher Auftragswert × Web-Lücke) ──
   dachdecker: ["craft=roofer"],
@@ -89,22 +94,6 @@ function parseSelector(sel: string): { key: string; value: string } {
   const i = sel.indexOf("=");
   if (i === -1) return { key: "craft", value: sel };
   return { key: sel.slice(0, i), value: sel.slice(i + 1) };
-}
-
-/**
- * Klassifiziert eine (normalisierte) deutsche Rufnummer als Mobil/Festnetz.
- * Mobil = +49 15x / 16x / 17x. Alles andere (Ortsvorwahl) = Festnetz.
- */
-export function classifyPhone(
-  phone: string | null | undefined,
-): "mobile" | "landline" | null {
-  if (!phone) return null;
-  const d = phone.replace(/\D/g, "");
-  // Auf nationales Format bringen: +49…/0049… → 0…
-  let nat = d;
-  if (nat.startsWith("49")) nat = "0" + nat.slice(2);
-  if (!nat.startsWith("0")) nat = "0" + nat;
-  return /^01[567]/.test(nat) ? "mobile" : "landline";
 }
 
 export interface OsmLeadRaw {
@@ -239,15 +228,6 @@ function joinAddr(
 ): string | null {
   if (!street) return null;
   return number ? `${street} ${number}` : street;
-}
-
-function normalizePhone(raw: string | undefined): string | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[^\d+]/g, "");
-  // 0049… → +49… (vor dem 0-Check prüfen, sonst wird +49049… draus)
-  if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
-  if (cleaned.startsWith("0")) return `+49${cleaned.slice(1)}`;
-  return cleaned;
 }
 
 function normalizeUrl(raw: string | undefined): string | null {

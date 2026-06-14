@@ -9,6 +9,7 @@
 export type FinderSourceId =
   | "osm"
   | "google_places"
+  | "stellenanzeigen"
   | "handelsregister"
   | "kleinanzeigen"
   | "branchenbuch";
@@ -58,6 +59,7 @@ export interface FinderResponse {
 export const SOURCE_LABELS: Record<FinderSourceId, string> = {
   osm: "OpenStreetMap",
   google_places: "Google Maps",
+  stellenanzeigen: "Stellenanzeigen (Arbeitsagentur)",
   handelsregister: "Neugründungen (Handelsregister)",
   kleinanzeigen: "Kleinanzeigen",
   branchenbuch: "Branchenbücher",

@@ -57,6 +57,7 @@ type WebsiteFilter = "all" | "without" | "with";
 const SOURCES: Array<{ id: FinderSourceId; enabled: boolean }> = [
   { id: "osm", enabled: true },
   { id: "google_places", enabled: true },
+  { id: "stellenanzeigen", enabled: true },
   { id: "handelsregister", enabled: false },
   { id: "kleinanzeigen", enabled: false },
   { id: "branchenbuch", enabled: false },

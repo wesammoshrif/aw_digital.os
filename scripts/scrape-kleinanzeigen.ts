@@ -42,6 +42,12 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import {
+  extractPhone,
+  extractEmail,
+  extractWebsite,
+  classifyPhoneType,
+} from "../src/lib/finder/extractContacts";
 
 // ── Datenschema (analog OsmLeadRaw, erweitert um Anzeigen-Metadaten) ──────
 interface KaLeadRaw {
@@ -81,42 +87,8 @@ const CONFIG = {
 
 const BASE = "https://www.kleinanzeigen.de";
 
-// ── Telefon-Normalisierung + Mobil/Festnetz (self-contained) ──────────────
-function normalizePhone(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/[^\d+]/g, "");
-  if (!cleaned) return null;
-  if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
-  if (cleaned.startsWith("0")) return `+49${cleaned.slice(1)}`;
-  if (cleaned.startsWith("+")) return cleaned;
-  return cleaned;
-}
-
-function classifyPhone(phone: string | null): "mobile" | "landline" | null {
-  if (!phone) return null;
-  const d = phone.replace(/\D/g, "");
-  let nat = d;
-  if (nat.startsWith("49")) nat = "0" + nat.slice(2);
-  if (!nat.startsWith("0")) nat = "0" + nat;
-  return /^01[567]/.test(nat) ? "mobile" : "landline";
-}
-
-/** Erste plausible deutsche Rufnummer aus Freitext (Anzeige/Impressum) ziehen. */
-function extractPhone(text: string): string | null {
-  const m = text.match(/(?:\+49|0)[\s\d()/-]{6,18}\d/);
-  if (!m) return null;
-  const norm = normalizePhone(m[0]);
-  // Plausibilität: 7–14 Ziffern nach Normalisierung.
-  if (!norm) return null;
-  const digits = norm.replace(/\D/g, "");
-  return digits.length >= 9 && digits.length <= 15 ? norm : null;
-}
-
-function extractEmail(text: string): string | null {
-  const m = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
-  return m ? m[0].toLowerCase() : null;
-}
-
+// Telefon/E-Mail/Website kommen aus dem geteilten Util (extractContacts) —
+// dieselbe Logik wie in den Finder-Adaptern. Hier nur noch KA-spezifisches.
 function extractPostal(text: string): string | null {
   const m = text.match(/\b(\d{5})\b/);
   return m ? m[1] : null;
@@ -265,7 +237,7 @@ async function main() {
           postalCode: extractPostal(locality) ?? extractPostal(imprint),
           street: extractStreet(imprint),
           phone,
-          phoneType: classifyPhone(phone),
+          phoneType: classifyPhoneType(phone),
           email: extractEmail(imprint),
           website: extractWebsite(imprint),
           isCommercial: t.isCommercial,
@@ -323,14 +295,6 @@ function extractCompany(imprint: string): string | null {
 function extractStreet(imprint: string): string | null {
   const m = imprint.match(/([A-ZÄÖÜ][a-zäöüß.\- ]+\s\d+[a-z]?)/);
   return m ? m[1].trim() : null;
-}
-
-function extractWebsite(imprint: string): string | null {
-  const m = imprint.match(/\b((?:https?:\/\/)?(?:www\.)?[a-z0-9-]+\.[a-z]{2,}(?:\/\S*)?)/i);
-  if (!m) return null;
-  const url = m[1];
-  if (/@/.test(url)) return null; // E-Mail, keine URL
-  return /^https?:\/\//i.test(url) ? url : `https://${url}`;
 }
 
 main().catch((err) => {
