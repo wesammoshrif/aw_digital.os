@@ -13,6 +13,7 @@
 
 import { detectBuilderSubdomain } from "@/lib/finder/builderSubdomain";
 import { runSeoChecks, type SeoReport } from "./seo";
+import { getTradeCard, fillTradeHook } from "@/lib/souffleur/tradePlaybook";
 
 export interface AuditResult {
   websiteUrl: string;
@@ -42,6 +43,7 @@ const PAGESPEED_URL =
 export async function runAudit(
   rawUrl: string,
   apiKey?: string,
+  meta?: { trade?: string | null; city?: string | null; contactName?: string | null },
 ): Promise<AuditResult> {
   const websiteUrl = normalize(rawUrl);
 
@@ -152,6 +154,9 @@ export async function runAudit(
     mobileScore,
     lcpMs,
     copyrightYear,
+    trade: meta?.trade,
+    city: meta?.city,
+    contactName: meta?.contactName,
   });
 
   return {
@@ -366,8 +371,12 @@ function buildHook(input: {
   mobileScore: number | null;
   lcpMs: number | null;
   copyrightYear: number | null;
+  trade?: string | null;
+  city?: string | null;
+  contactName?: string | null;
 }): string {
-  const { flags, mobileScore, lcpMs, copyrightYear } = input;
+  const { flags, mobileScore, lcpMs, copyrightYear, trade, city, contactName } =
+    input;
 
   const builder = flags
     .find((f) => f.startsWith("builder_subdomain:"))
@@ -384,6 +393,19 @@ function buildHook(input: {
   if (flags.includes("no_impressum")) {
     return "Mir ist aufgefallen, dass auf Ihrer Website das Impressum fehlt — das ist in Deutschland abmahnfähig.";
   }
+
+  // ── Branchen-/ortsscharfer Hook (statt generischem Tech-Satz) ──
+  // Nutzt die gewerksspezifischen auditHooks NUR bei echtem Datensignal
+  // (langsam / nicht mobil) — die Stadt wird eingesetzt.
+  const card = trade ? getTradeCard(trade) : null;
+  if (card) {
+    const fill = (s: string) => fillTradeHook(s, contactName, city);
+    if (lcpMs !== null && lcpMs > 4500) return fill(card.auditHooks.slow);
+    if (flags.includes("no_viewport")) return fill(card.auditHooks.noMobile);
+    if (mobileScore !== null && mobileScore < 50)
+      return fill(card.auditHooks.slow);
+  }
+
   if (lcpMs && lcpMs > 5000) {
     return `Ihre Website lädt auf dem Handy ${(lcpMs / 1000).toFixed(1)} Sekunden — drei Viertel Ihrer Besucher springen vorher ab.`;
   }

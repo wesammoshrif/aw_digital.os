@@ -60,7 +60,15 @@ export function CallMode({
   const [saving, setSaving] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
+  const [apptPicking, setApptPicking] = useState(false);
+  const [apptDate, setApptDate] = useState("");
   const popupRef = useRef<Window | null>(null);
+  // Anruf-Start für die Dauer-/Erreichungs-Statistik (connectRate).
+  const callStartRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (active && callStartRef.current === null) callStartRef.current = Date.now();
+    if (!active) callStartRef.current = null;
+  }, [active]);
 
   const initiateSystemCall = useCallback(() => {
     if (!lead.phone) return;
@@ -74,12 +82,13 @@ export function CallMode({
 
   // ── Dispo speichern: Kadenz anwenden → PATCH → zur Heute-Liste ──
   const saveDispo = useCallback(
-    async (dispo: Disposition, label: string) => {
+    async (dispo: Disposition, label: string, appointmentAt?: Date) => {
       setSaving(dispo);
       setSaveError(null);
       const cad = applyCadence(
         { status: lead.status, attempts: lead.attempts },
         dispo,
+        { appointmentAt },
       );
       try {
         // 1. Lead-Status aktualisieren
@@ -114,15 +123,33 @@ export function CallMode({
         });
 
         // 3. Anruf protokollieren (Statistik & Gedächtnis) — Mock-No-Op
+        const durationSec =
+          callStartRef.current !== null
+            ? Math.max(0, Math.round((Date.now() - callStartRef.current) / 1000))
+            : null;
         await fetch(`/api/calls`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             leadId: lead.id,
             dispo,
+            durationSec,
             transcript: note.trim() || null,
           }),
         }).catch(() => {});
+
+        // 4. Bei Termin: echte appointments-Row anlegen (für Erinnerungs-Cron).
+        if (dispo === "appointment") {
+          await fetch(`/api/appointments`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              leadId: lead.id,
+              startsAt: (appointmentAt ?? cad.nextStepAt).toISOString(),
+              title: "Telefon-/Vor-Ort-Termin",
+            }),
+          }).catch(() => {});
+        }
 
         setLastDispo(`${label} → ${cad.nextStep}`);
         setActive(false);
@@ -340,6 +367,37 @@ export function CallMode({
             </div>
           )}
         </div>
+        {apptPicking && (
+          <div className="mb-3 flex flex-wrap items-end gap-3 rounded-[var(--radius-md)] border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-3">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
+                Termin wann?
+              </span>
+              <input
+                type="datetime-local"
+                value={apptDate}
+                onChange={(e) => setApptDate(e.target.value)}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-hairline)] bg-white px-3 py-2 text-[13px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!apptDate || !!saving}
+              onClick={() => {
+                const d = new Date(apptDate);
+                if (isNaN(d.getTime())) return;
+                setApptPicking(false);
+                saveDispo("appointment", "Termin", d);
+              }}
+            >
+              Termin speichern
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setApptPicking(false)}>
+              Abbrechen
+            </Button>
+          </div>
+        )}
         <div className="grid grid-cols-4 gap-2.5">
           {DISPOSITIONS.map((d) => {
             const Icon = d.icon;
@@ -347,7 +405,14 @@ export function CallMode({
               <button
                 key={d.key}
                 disabled={!!saving}
-                onClick={() => saveDispo(d.key, d.label)}
+                onClick={() => {
+                  if (d.key === "appointment") {
+                    if (!apptDate) setApptDate(defaultApptDateTime());
+                    setApptPicking(true);
+                    return;
+                  }
+                  saveDispo(d.key, d.label);
+                }}
                 className={cn(
                   "group flex flex-col items-start rounded-[var(--radius-md)] border bg-white p-3 text-left shadow-[var(--shadow-1)] transition disabled:opacity-50",
                   saving === d.key && "ring-2 ring-[var(--color-copper-400)]",
@@ -371,6 +436,15 @@ export function CallMode({
       </div>
     </div>
   );
+}
+
+/** Default-Terminvorschlag: morgen 10:00, im datetime-local-Format. */
+function defaultApptDateTime(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(10, 0, 0, 0);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function RecordingBars() {

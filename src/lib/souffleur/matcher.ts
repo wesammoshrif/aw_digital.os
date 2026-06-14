@@ -5,10 +5,12 @@
 
 import { PLAYBOOK, type Move } from "./playbook";
 
-/* Reihenfolge = Priorität: spezifische Einwände vor Signalen/Eröffnung. */
+/* Reihenfolge = Priorität: spezifische Einwände vor Signalen/Eröffnung.
+   gatekeeper hoch, damit „worum geht's?" sofort die Durchstell-Antwort liefert. */
 const PRIORITY: Move["kind"][] = [
   "closing",
   "signal",
+  "gatekeeper",
   "objection",
   "opener",
 ];

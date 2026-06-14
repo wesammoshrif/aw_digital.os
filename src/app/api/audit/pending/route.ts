@@ -12,8 +12,20 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { runAudit } from "@/lib/audit/website";
+import { getTradeCard, fillTradeHook } from "@/lib/souffleur/tradePlaybook";
 import { isMockMode } from "@/lib/mode";
 import { OWNER_ID } from "@/lib/utils";
+
+/** Hook für Leads OHNE Website — das stärkste Kaufsignal. */
+function websiteLessHook(
+  trade: string | null,
+  city: string | null,
+  contactName: string | null,
+): string {
+  const card = getTradeCard(trade);
+  if (card) return fillTradeHook(card.hookSatz, contactName, city);
+  return "Mir ist aufgefallen, dass Sie aktuell gar keine eigene Website haben — wer Sie googelt, findet nichts. Genau diese Anfragen gehen gerade an die Konkurrenz.";
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -45,6 +57,7 @@ export async function POST(req: NextRequest) {
           const result = await runAudit(
             lead.website as string,
             process.env.PAGESPEED_API_KEY,
+            { trade: lead.trade, city: lead.city, contactName: lead.contactName },
           );
           audited.push({
             company: lead.company,
@@ -62,28 +75,39 @@ export async function POST(req: NextRequest) {
     // ── DB-Modus: auditieren + persistieren ─────────────────────────
     const { db } = await import("@/db");
     const { leads, audits } = await import("@/db/schema");
-    const { and, eq, isNull, isNotNull } = await import("drizzle-orm");
+    const { and, eq, isNull } = await import("drizzle-orm");
 
+    // Noch nicht auditierte Leads (auditHook leer) — auch website-LOSE, denn
+    // die sind die heißesten Ziele. Der Import setzt nur einen provisorischen
+    // painScore (Sortierung), aber keinen Hook → hier wird verfeinert.
     const pending = await db
       .select()
       .from(leads)
-      .where(
-        and(
-          eq(leads.ownerId, ownerId),
-          isNotNull(leads.website),
-          isNull(leads.painScore),
-        ),
-      )
+      .where(and(eq(leads.ownerId, ownerId), isNull(leads.auditHook)))
       .limit(limit);
 
     let auditedCount = 0;
 
     for (const lead of pending) {
-      if (!lead.website) continue;
       try {
+        // ── Keine Website → Max-Pain (painScore 10) ohne runAudit ──
+        if (!lead.website) {
+          await db
+            .update(leads)
+            .set({
+              painScore: 10,
+              auditHook: websiteLessHook(lead.trade, lead.city, lead.contactName),
+              updatedAt: new Date(),
+            })
+            .where(eq(leads.id, lead.id));
+          auditedCount++;
+          continue;
+        }
+
         const result = await runAudit(
           lead.website,
           process.env.PAGESPEED_API_KEY,
+          { trade: lead.trade, city: lead.city, contactName: lead.contactName },
         );
 
         await db.insert(audits).values({

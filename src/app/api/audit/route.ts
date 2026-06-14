@@ -25,7 +25,23 @@ export async function POST(req: NextRequest) {
   const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
 
   try {
-    const result = await runAudit(body.websiteUrl, process.env.PAGESPEED_API_KEY);
+    // Lead-Kontext (Gewerk/Stadt) für den branchenscharfen Hook ziehen.
+    let meta: { trade?: string | null; city?: string | null; contactName?: string | null } = {};
+    if (body.leadId && process.env.DATABASE_URL) {
+      try {
+        const { getLead } = await import("@/lib/store");
+        const lead = await getLead(body.leadId);
+        if (lead) meta = { trade: lead.trade, city: lead.city, contactName: lead.contactName };
+      } catch {
+        /* Hook bleibt generisch — kein Blocker. */
+      }
+    }
+
+    const result = await runAudit(
+      body.websiteUrl,
+      process.env.PAGESPEED_API_KEY,
+      meta,
+    );
 
     // Ohne DB: Audit läuft trotzdem, Ergebnis kommt direkt zurück.
     if (!process.env.DATABASE_URL) {

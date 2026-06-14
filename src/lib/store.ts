@@ -105,6 +105,37 @@ export async function createProject(input: {
   }
 }
 
+export async function createAppointment(input: {
+  leadId: string;
+  startsAt: Date;
+  title?: string;
+  reminderAt?: Date;
+}): Promise<{ id: string } | null> {
+  if (isMockMode) return null;
+  try {
+    const { db } = await import("@/db");
+    const { appointments } = await import("@/db/schema");
+    // Erinnerung standardmäßig 24h vor dem Termin.
+    const reminderAt =
+      input.reminderAt ??
+      new Date(input.startsAt.getTime() - 24 * 60 * 60 * 1000);
+    const [row] = await db
+      .insert(appointments)
+      .values({
+        ownerId: OWNER_ID,
+        leadId: input.leadId,
+        startsAt: input.startsAt,
+        title: input.title ?? "Telefon-Termin",
+        status: "scheduled",
+        reminderAt,
+      })
+      .returning({ id: appointments.id });
+    return row ? { id: row.id } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function listTasks(projectId: string) {
   if (isMockMode)
     return mockTasks

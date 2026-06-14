@@ -9,6 +9,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import {
+  GOLDEN_RULES,
+  NEIN_GRADIENTEN,
+  classifyNein,
+  type NeinTyp,
+} from "@/lib/souffleur/strategies";
 
 const SYSTEM = `Du bist ein Echtzeit-Verkaufs-Souffleur für Kalt-Akquise in Deutschland.
 Ein Solo-Berater verkauft Premium-Websites (~2.000 €) + Wartung an Handwerksbetriebe.
@@ -16,7 +22,10 @@ Du bekommst das letzte Transkript des Gesprächs und ggf. branchenspezifischen K
 Nutze die Brancheninfos, um den Tipp passend zum Gewerk zu formulieren.
 Gib GENAU EINEN Satz zurück, den der Berater JETZT sagen soll — natürlich, konkret,
 auf Augenhöhe, kein Floskel-Deutsch, keine Anführungszeichen, keine Erklärung.
-Maximal 30 Wörter.`;
+Maximal 30 Wörter. Ziel jedes Anrufs: der nächste Schritt (Termin), nicht der Verkauf.
+
+GOLDENE REGELN (immer einhalten):
+${GOLDEN_RULES.map((r) => `- ${r}`).join("\n")}`;
 
 // GET: Verfügbarkeits-Check für den Readiness-Chip
 export async function GET() {
@@ -39,6 +48,8 @@ export async function POST(req: NextRequest) {
     company?: string;
     trade?: string | null;
     tradeContext?: string | null;
+    neinTyp?: NeinTyp | null;
+    phase?: string | null;
   };
 
   try {
@@ -49,6 +60,13 @@ export async function POST(req: NextRequest) {
       ? `\nBranchen-Kontext:\n${body.tradeContext}\n`
       : "";
 
+    // Nein-Gradient erkennen (Client kann vorgeben, sonst aus Transkript).
+    const neinTyp = body.neinTyp ?? classifyNein(body.transcript);
+    const neinBlock = neinTyp
+      ? `\nNein-Typ erkannt: ${neinTyp} → ${NEIN_GRADIENTEN.find((g) => g.typ === neinTyp)?.behandlung ?? ""}\n`
+      : "";
+    const phaseBlock = body.phase ? `\nGesprächsphase: ${body.phase}\n` : "";
+
     const msg = await client.messages.create({
       model: "claude-haiku-4-5",
       max_tokens: 80,
@@ -58,7 +76,7 @@ export async function POST(req: NextRequest) {
           role: "user",
           content: `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}
 Letztes Transkript: "${body.transcript ?? ""}"
 
 Der nächste Satz, den ich sagen soll:`,

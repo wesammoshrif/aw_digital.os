@@ -16,6 +16,7 @@
 
 export type MoveKind =
   | "opener"
+  | "gatekeeper"
   | "objection"
   | "signal"
   | "closing"
@@ -304,6 +305,32 @@ export const PLAYBOOK: Move[] = [
     ],
   },
 
+  // ── GATEKEEPER (Sekretariat / Mitarbeiter am Telefon) ────────
+  {
+    id: "gk_durchstellen",
+    kind: "gatekeeper",
+    label: "Durchstellen lassen",
+    trigger:
+      /\b(worum geht|um was geht|in welcher angelegenheit|kann ich (etwas|was) ausrichten|nicht (im haus|da|erreichbar)|in einer besprechung|wer (sind sie|ruft an)|sind sie von)\b/i,
+    line: "Es geht um die Außendarstellung von [Firma] — ich hatte mir das angesehen und wollte Herrn [Chef] kurz eine Rückmeldung geben. Können Sie mich einen Moment durchstellen?",
+    alts: [
+      "Verstehe. Sagen Sie ihm einfach, es geht um die Website und dauert 2 Minuten — er weiß dann Bescheid. Ist er gerade da?",
+      "Kein Thema. Wann erreiche ich Herrn [Chef] heute am besten direkt?",
+    ],
+  },
+  {
+    id: "gk_rueckruf",
+    kind: "gatekeeper",
+    label: "Rückrufzeit sichern",
+    trigger:
+      /\b(rufen sie (später|nochmal)|am besten (erreichen|anrufen)|wann (ist|wäre) er (da|erreichbar)|versuchen sie es|später nochmal)\b/i,
+    line: "Mache ich gern. Wann erreiche ich Herrn [Chef] am besten direkt — eher vormittags oder am späten Nachmittag?",
+    alts: [
+      "Passt. Gibt es eine Durchwahl oder Handynummer, unter der ich ihn direkt bekomme?",
+      "Alles klar. Ich notiere mir [Tag] nachmittags. Sagen Sie ihm, AW Digital wegen der Website meldet sich nochmal?",
+    ],
+  },
+
   // ── ABSCHLUSS ────────────────────────────────────────────────
   {
     id: "closing",
@@ -349,11 +376,20 @@ export const QUICK_OBJECTIONS = [
 
 export const KIND_LABEL: Record<MoveKind, string> = {
   opener: "Eröffnung",
+  gatekeeper: "Gatekeeper",
   objection: "Einwand",
   signal: "Kaufsignal",
   closing: "Abschluss",
   guidance: "Hinweis",
 };
+
+/**
+ * Voicemail-Skript (~15 Sek.) für den Dispo „Mailbox". Nummer zweimal,
+ * konkretes Audit-Signal statt Produktwerbung, ein Satz Neugier.
+ * {hook} → Audit-Hook, [Nummer] → eigene Rückrufnummer.
+ */
+export const VOICEMAIL_SCRIPT =
+  "Guten Tag Herr [Name], hier [Berater] von AW Digital. Ich rufe an, weil mir an Ihrer Website etwas aufgefallen ist: {hook} Das kostet Sie gerade Anfragen. Rufen Sie mich kurz zurück unter [Nummer] — ich wiederhole: [Nummer]. Dauert keine zwei Minuten. Danke, und bis dann!";
 
 export function getMove(id: string): Move | undefined {
   return PLAYBOOK.find((m) => m.id === id);

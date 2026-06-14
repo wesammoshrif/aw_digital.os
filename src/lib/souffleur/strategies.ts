@@ -281,6 +281,22 @@ export interface NeinGradient {
   erfolgsquote: string;
 }
 
+/**
+ * Klassifiziert ein „Nein" des Kunden nach Gradient (reflexiv/weich/hart) anhand
+ * der Trigger-Wörter. Reihenfolge hart → weich → reflexiv, damit ein
+ * entschiedenes Nein nicht von einer beiläufigen Floskel überschattet wird.
+ * Gibt null zurück, wenn kein Nein-Muster greift.
+ */
+export function classifyNein(text: string | null | undefined): NeinTyp | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  for (const typ of ["hart", "weich", "reflexiv"] as NeinTyp[]) {
+    const g = NEIN_GRADIENTEN.find((x) => x.typ === typ);
+    if (g && g.triggerWords.some((w) => t.includes(w))) return typ;
+  }
+  return null;
+}
+
 export const NEIN_GRADIENTEN: NeinGradient[] = [
   {
     typ: "reflexiv",

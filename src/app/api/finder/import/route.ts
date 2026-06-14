@@ -17,6 +17,20 @@ function toSource(s: FinderLead["source"]): string {
   return "manual";
 }
 
+/**
+ * Provisorischer Pain-Score beim Import (niedriger = heißer = höhere Priorität).
+ * Wird vom späteren Voll-Audit verfeinert; sorgt aber sofort für eine sinnvolle
+ * Queue-Reihenfolge statt zufälliger Sortierung.
+ */
+function quickPainScore(l: FinderLead): number {
+  let s = 60;
+  if (!l.website) s -= 30; // keine Website = stärkstes Kaufsignal
+  if (l.builderPlatform) s -= 20; // Gratis-Baukasten = fast genauso heiß
+  if (l.rating == null) s -= 5;
+  if (l.phoneType === "mobile") s -= 5; // Solo-Inhaber, geht eher selbst ran
+  return Math.max(0, Math.min(100, s));
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { leads?: FinderLead[] };
@@ -83,6 +97,14 @@ export async function POST(req: NextRequest) {
           website: l.website,
           status: "new",
           source: toSource(l.source) as never,
+          // Provisorischer Pain-Score → Queue sortiert sofort sinnvoll.
+          painScore: quickPainScore(l),
+          // Verkaufs-Signale für die spätere Anreicherung/Anzeige.
+          custom: {
+            builderPlatform: l.builderPlatform ?? null,
+            rating: l.rating ?? null,
+            phoneType: l.phoneType ?? null,
+          },
           nextStep: "Erstanruf",
           nextStepAt: new Date(),
         });
@@ -92,7 +114,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, inserted, skipped });
+    // Post-Import: frische Leads im Hintergrund auditieren (fire-and-forget,
+    // blockiert die Import-Antwort nicht — verfeinert painScore + setzt Hook).
+    if (inserted > 0) {
+      const origin = req.nextUrl.origin;
+      void fetch(`${origin}/api/audit/pending`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-owner-id": ownerId },
+        body: JSON.stringify({ limit: Math.min(10, inserted) }),
+      }).catch(() => {});
+    }
+
+    return NextResponse.json({ ok: true, inserted, skipped, audited: inserted > 0 });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }
