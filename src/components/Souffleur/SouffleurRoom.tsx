@@ -21,6 +21,7 @@ import type { Lead } from "@/db/schema";
 import {
   PLAYBOOK,
   QUICK_OBJECTIONS,
+  CLOSING_TECHNIQUES,
   KIND_LABEL,
   VOICEMAIL_SCRIPT,
   getMove,
@@ -1145,6 +1146,28 @@ export function SouffleurRoom({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* ── Abschluss-Techniken (bei Kaufsignal antippen) ─────── */}
+        <div className="mt-4">
+          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+            Abschluss antippen → groß
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {CLOSING_TECHNIQUES.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setAiLine(c.line);
+                  setDetected(null);
+                }}
+                title={c.line}
+                className="rounded-[10px] bg-[#f0fdf4] px-2.5 py-2 text-left text-[12px] font-medium text-[#1a7f37] transition hover:bg-[#dcfce7]"
+              >
+                {c.label}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -224,18 +224,22 @@ export async function listLeads(opts?: {
   if (isMockMode) {
     let rows = [...mockLeads];
     if (opts?.status) rows = rows.filter((l) => l.status === opts.status);
+    // Heißeste zuerst (niedriger painScore = mehr Verkaufs-Hebel), null ans Ende.
+    rows.sort((a, b) => (a.painScore ?? 101) - (b.painScore ?? 101));
     return rows.slice(0, opts?.limit ?? 200);
   }
   const { db } = await import("@/db");
   const { leads } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
+  const { eq, and, asc, desc } = await import("drizzle-orm");
   const where = opts?.status
     ? and(eq(leads.ownerId, OWNER_ID), eq(leads.status, opts.status as never))
     : eq(leads.ownerId, OWNER_ID);
+  // painScore ASC → Postgres sortiert NULL ans Ende (unaudierte zuletzt).
   return db
     .select()
     .from(leads)
     .where(where)
+    .orderBy(asc(leads.painScore), desc(leads.createdAt))
     .limit(opts?.limit ?? 200) as never;
 }
 

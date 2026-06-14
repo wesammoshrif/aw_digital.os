@@ -149,6 +149,15 @@ export async function runAudit(
   });
 
   // ── 4. Auto-Hook ──────────────────────────────────────────────
+  // Konkreter SEO-Fallback: der schwerwiegendste SEO-Fail als Aufhänger,
+  // falls kein stärkeres Signal (Baukasten/HTTPS/langsam …) greift.
+  const topSeoFail = seo.checks.find(
+    (c) => c.status === "fail" && !["https", "robots_meta", "reachable"].includes(c.id),
+  );
+  const seoFallback = topSeoFail
+    ? `Mir ist an Ihrer Website etwas aufgefallen: ${topSeoFail.detail} Bei Google kostet Sie das Anfragen — hätten Sie 60 Sekunden?`
+    : null;
+
   const hookText = buildHook({
     flags,
     mobileScore,
@@ -157,6 +166,7 @@ export async function runAudit(
     trade: meta?.trade,
     city: meta?.city,
     contactName: meta?.contactName,
+    seoFallback,
   });
 
   return {
@@ -374,9 +384,18 @@ function buildHook(input: {
   trade?: string | null;
   city?: string | null;
   contactName?: string | null;
+  seoFallback?: string | null;
 }): string {
-  const { flags, mobileScore, lcpMs, copyrightYear, trade, city, contactName } =
-    input;
+  const {
+    flags,
+    mobileScore,
+    lcpMs,
+    copyrightYear,
+    trade,
+    city,
+    contactName,
+    seoFallback,
+  } = input;
 
   const builder = flags
     .find((f) => f.startsWith("builder_subdomain:"))
@@ -418,7 +437,10 @@ function buildHook(input: {
   if (flags.includes("no_booking_cta")) {
     return "Auf Ihrer Website gibt es keinen direkten Termin-Button — jeder Anruf, den Sie verpassen, geht zur Konkurrenz.";
   }
-  return "Ich habe Ihre Website kurz analysiert — hätten Sie 90 Sekunden für die zwei größten Fundstücke?";
+  return (
+    seoFallback ??
+    "Ich habe Ihre Website kurz analysiert — hätten Sie 90 Sekunden für die zwei größten Fundstücke?"
+  );
 }
 
 function normalize(url: string): string {

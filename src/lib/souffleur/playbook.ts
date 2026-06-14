@@ -374,6 +374,43 @@ export const QUICK_OBJECTIONS = [
   "mundpropaganda",
 ] as const;
 
+/**
+ * Abschluss-Techniken — antippbar im Souffleur, sobald ein Kaufsignal kommt.
+ * Mehrere Wege zum Termin, je nach Gesprächslage (statt nur einer Karte).
+ */
+export const CLOSING_TECHNIQUES: { id: string; label: string; line: string }[] = [
+  {
+    id: "alternativ",
+    label: "Alternativ-Frage",
+    line: "Passt Ihnen Donnerstag um 14 Uhr besser oder Freitag am Vormittag? Dann blocke ich uns 15 Minuten.",
+  },
+  {
+    id: "annahme",
+    label: "Annahme-Abschluss",
+    line: "Gut, dann mache ich Folgendes: Ich bereite Ihnen einen ersten Entwurf vor und wir schauen ihn Donnerstag gemeinsam an. Auf welche E-Mail darf die Einladung?",
+  },
+  {
+    id: "zusammenfassung",
+    label: "Zusammenfassung",
+    line: "Also: Sie wollen mehr Anfragen über Google, ohne sich um Technik zu kümmern. Genau das liefere ich. Machen wir den nächsten Schritt — 15 Minuten Donnerstag?",
+  },
+  {
+    id: "risiko",
+    label: "Risiko-Umkehr",
+    line: "Sie gehen null Risiko ein: Ich zeige Ihnen erst den fertigen Entwurf. Gefällt er nicht, zahlen Sie nichts. Fair?",
+  },
+  {
+    id: "knappheit",
+    label: "Knappheit",
+    line: "Ich nehme pro Monat nur eine Handvoll neuer Betriebe an, weil ich jede Seite selbst betreue. Wollen Sie sich einen der Plätze sichern?",
+  },
+  {
+    id: "mini_ja",
+    label: "Mini-Ja",
+    line: "Wäre es nicht zumindest interessant, einmal zu sehen, was ein Kunde sieht, wenn er Sie googelt? Das kostet Sie zwei Minuten.",
+  },
+];
+
 export const KIND_LABEL: Record<MoveKind, string> = {
   opener: "Eröffnung",
   gatekeeper: "Gatekeeper",

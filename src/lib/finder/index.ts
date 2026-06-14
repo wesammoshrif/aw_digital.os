@@ -77,11 +77,18 @@ export async function findLeads(q: FinderQuery): Promise<FinderResponse> {
     }
   }
 
-  const leads = [...map.values()].sort((a, b) => {
-    // Mit Telefon zuerst, dann nach Bewertung
-    if (!!b.phone !== !!a.phone) return a.phone ? -1 : 1;
-    return (b.rating ?? 0) - (a.rating ?? 0);
-  });
+  // Verkaufs-Hitze: anrufbar (Telefon) ist Pflicht, dann zählt die WEB-LÜCKE
+  // (keine Website > Gratis-Baukasten) mehr als eine hohe Bewertung — denn
+  // genau die Betriebe ohne eigenen Auftritt sind die kaufwilligsten.
+  const heat = (l: FinderLead): number => {
+    let s = 0;
+    if (l.phone) s += 100;
+    if (!l.website) s += 40;
+    else if (l.builderPlatform) s += 25;
+    s += Math.min(10, (l.rating ?? 0) * 2);
+    return s;
+  };
+  const leads = [...map.values()].sort((a, b) => heat(b) - heat(a));
 
   return {
     ok: true,
