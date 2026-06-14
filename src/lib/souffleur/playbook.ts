@@ -159,7 +159,7 @@ export const PLAYBOOK: Move[] = [
     label: "Schon 10x angerufen",
     // "nerv" mit Suffix-Gruppe, sonst matcht "nervt"/"nerven"/"nervig" nicht.
     trigger:
-      /\b(schon.*angerufen|hundert.*mal|ständig.*agentur|jede.*woche|nerv[a-zäöüß]*|wieder.*einer|immer.*dasselbe|dauernd.*anrufe)\b/i,
+      /\b(schon.*angerufen|hundert.*mal|ständig.*agentur|jede.*woche|genervt|nervt|nervig|wieder.*einer|immer.*dasselbe|dauernd.*anrufe)\b/i,
     line: "Das glaube ich Ihnen sofort. Ich bin kein Callcenter. Ich habe mir vorher Ihre Google-Präsenz angeschaut und gesehen, dass Sie für drei wichtige Suchbegriffe nicht auftauchen. Das wollte ich Ihnen einmal mitteilen.",
     alts: [
       "Ich rufe heute genau vier Betriebe an, nicht vierhundert. Und ich habe konkret gesehen, dass Ihr Wettbewerber bei Google auf Platz 1 steht.",
@@ -222,7 +222,7 @@ export const PLAYBOOK: Move[] = [
     label: "Kurz vor Rente",
     trigger:
       // "alter" raus (matchte "mein alter Geselle"), "noch.*jahre" auf Renten-Kontext einengen.
-      /\b(rente|aufhören|nachfolger|schluss machen|ruhestand|pension|letzte.*jahre|noch (ein )?(paar|wenige) jahre|bald (ist )?ende)\b|übergabe/i,
+      /\b(rente|aufhören|nachfolger|schluss machen|ruhestand|pension|letzte.*jahre|noch (ein )?(paar|wenige) jahre|bald (ist )?ende|betriebsübergabe|geschäftsübergabe|übergabe)\b/i,
     line: "Gerade deswegen: Ein Betrieb mit professioneller Website und Google-Bewertungen ist deutlich mehr wert. Das ist wie beim Hausverkauf: renoviert bringt mehr als unrenoviert.",
     alts: [
       "Die letzten Jahre sollen die entspanntesten sein, oder? Mit der Website kommen die guten Aufträge, keine Preisdrückerei.",

@@ -514,20 +514,28 @@ export function getTradeCard(trade: string | null | undefined): TradeCard | null
   if (!trade) return null;
   const t = trade.toLowerCase().trim();
   if (t.length < 3) return null;
-  return (
-    TRADE_PLAYBOOK.find(
-      (card) =>
-        card.id === t ||
-        // Substring nur ab Mindestlänge, sonst matchen Kürzel wie "bau"
-        // versehentlich auf dachbau/holzbau/gartenbau (falsche Branchenkarte).
-        card.aliases.some(
-          (a) =>
-            a === t ||
-            (a.includes(t) && t.length >= 4) ||
-            (t.includes(a) && a.length >= 4),
-        ),
-    ) ?? null
-  );
+  // BESTEN Treffer wählen, nicht den ersten in Array-Reihenfolge — sonst
+  // liefert ein Freitext wie "anlagenmechaniker shk" je nach Reihenfolge die
+  // falsche Branchenkarte. Score nach Spezifität des Alias.
+  let best: TradeCard | null = null;
+  let bestScore = 0;
+  for (const card of TRADE_PLAYBOOK) {
+    let score = 0;
+    if (card.id === t) score = 1000;
+    else {
+      for (const a of card.aliases) {
+        if (a === t) score = Math.max(score, 900);
+        // Substring nur ab Mindestlänge 4 (sonst matcht "bau" auf alles).
+        else if (t.includes(a) && a.length >= 4) score = Math.max(score, 100 + a.length);
+        else if (a.includes(t) && t.length >= 4) score = Math.max(score, 50 + t.length);
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = card;
+    }
+  }
+  return bestScore > 0 ? best : null;
 }
 
 /**

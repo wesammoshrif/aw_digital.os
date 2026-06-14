@@ -51,3 +51,20 @@ Beim Live-Durchklicken eines echten Dachdecker-Leads (keine Website) aufgefallen
 - **Kein Vorab-Briefing** auf Lead-Detail/Souffleur: die wahrscheinlichen Pain Points + erwarteten Einwände werden nicht prominent gebrieft — genau das Ziel „nur ablesen".
 
 → Diese Punkte + die Code-Bug-Jagd fließen in den Read-off-Ausbau (siehe `KALTAKQUISE-ROADMAP.md` und die folgenden Commits).
+
+## 6. Bug-Jagd (5 Linsen, 25 bestätigte Bugs) — Stand
+
+**Gefixt (live-feedback-kritisch + read-off):**
+- ✅ Matcher bekommt das **rollende Transkript** (war: einzelner Deepgram-Chunk) → gesplittete Einwände werden erkannt. **Das war „Live-Feedback geht nicht".** (+ 6 Tests)
+- ✅ **Negations-Guard** im Matcher (Ablehnung → kein Abschluss-Tipp), **PRIORITY** Einwand vor Signal.
+- ✅ **Haiku-Stale-Guard** (out-of-order-Antworten überschreiben den Satz nicht mehr).
+- ✅ **Branchenscharfer Opener** als Hauptsatz; Pre-Call-**Briefing** (Pain Points + erwartete Einwände); Opener website-adaptiv + Name-Füllung.
+- ✅ **P0 Termin-Datum** aus dem Popup geht nicht mehr verloren.
+- ✅ `getTradeCard` score-basiert (richtige Branchenkarte bei Freitext), Trigger-Falsch-Positive (`callcenter_fatigue`, `vor_rente`), `summary`-JSON robust (Fence-Stripping).
+
+**Offen — Audio-Pipeline (für Aschraf, braucht echten Anruf zum Testen):**
+- ⏳ Deepgram-WS **Auto-Reconnect + KeepAlive** (Transkription stirbt sonst still nach Socket-Close mitten im Call).
+- ⏳ Deepgram **Interims anzeigen** (Verkäufer sieht während langer Kundensätze nichts).
+- ⏳ `durationSec` aus echtem Call-Lifecycle (statt Klick-bis-Dispo) — berührt `SipDialer`.
+
+**Restliche P2** (Politur): viewport-Regex vereinheitlichen, KI-Readiness-Chip nachführen, toter `recording`-State, Mock-Leads mit `auditPayload`. Volle Liste im Workflow-Ergebnis.

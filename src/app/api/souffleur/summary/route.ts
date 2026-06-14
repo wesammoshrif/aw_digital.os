@@ -64,9 +64,15 @@ Gib NUR dieses JSON zurück:
       .join(" ")
       .trim();
 
+    // Robust: Code-Fences entfernen + den größten {...}-Block extrahieren,
+    // falls Haiku den JSON in ```json … ``` wickelt oder Text drumherum setzt.
+    const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    const jsonStr = start !== -1 && end > start ? cleaned.slice(start, end + 1) : cleaned;
     let json: unknown;
     try {
-      json = JSON.parse(raw);
+      json = JSON.parse(jsonStr);
     } catch {
       return NextResponse.json({ ok: false, message: "Parse-Fehler" });
     }
