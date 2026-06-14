@@ -1,39 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
+import { verifyBasicAuth } from "@/lib/auth";
 
 /**
- * Zugangs-Gate für den Deploy (HTTP Basic Auth).
+ * Zugangs-Gate für den Deploy (HTTP Basic Auth) — erste Verteidigungslinie.
+ * Die Route-Handler prüfen zusätzlich selbst (requireAuth, Defense-in-Depth).
  *
- * Schützt die GESAMTE App + alle API-Routen, sobald `APP_PASSWORD` gesetzt ist.
- * Single-User-Tool → ein Passwort genügt; der Browser merkt sich die Anmeldung.
- *
- * - Ohne `APP_PASSWORD` (lokale Entwicklung) → kein Gate.
- * - Der Cron-Endpoint ist im matcher ausgenommen (er schützt sich via
- *   CRON_SECRET, weil Vercel-Cron ihn ohne Basic-Auth-Header aufruft).
- *
- * ⚠️ Für einen sicheren Production-Deploy MUSS `APP_PASSWORD` (z.B. in Vercel)
- *    gesetzt sein — sonst ist die App öffentlich erreichbar.
+ * - In Production OHNE `APP_PASSWORD` → 503 (fail-closed), App bleibt zu.
+ * - Lokale Entwicklung (NODE_ENV !== production, kein Passwort) → kein Gate.
+ * - Brute-Force-Schutz: In-Memory-Rate-Limit pro IP (reicht für Single-Container).
+ * - Cron ist im matcher ausgenommen (schützt sich via CRON_SECRET).
  */
+
+const WINDOW_MS = 5 * 60_000; // 5 Minuten
+const MAX_FAILS = 10; // danach 429
+const fails = new Map<string, { count: number; resetAt: number }>();
+
+function isRateLimited(ip: string, now: number): boolean {
+  const e = fails.get(ip);
+  if (!e || now > e.resetAt) return false;
+  return e.count >= MAX_FAILS;
+}
+function recordFail(ip: string, now: number) {
+  const e = fails.get(ip);
+  if (!e || now > e.resetAt) fails.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+  else e.count++;
+  // Defensiv gegen unbegrenztes Wachstum der Map.
+  if (fails.size > 5000) {
+    for (const [k, v] of fails) if (now > v.resetAt) fails.delete(k);
+  }
+}
+
 export function middleware(req: NextRequest) {
   const password = process.env.APP_PASSWORD;
-  if (!password) return NextResponse.next(); // dev: kein Gate
 
-  const expectedUser = process.env.APP_USER || "aw";
-  const header = req.headers.get("authorization");
-
-  if (header?.startsWith("Basic ")) {
-    try {
-      const decoded = atob(header.slice(6));
-      const sep = decoded.indexOf(":");
-      const user = decoded.slice(0, sep);
-      const pass = decoded.slice(sep + 1);
-      if (user === expectedUser && pass === password) {
-        return NextResponse.next();
-      }
-    } catch {
-      /* fällt durch zum 401 */
+  // ── Fail-closed: Production ohne Passwort = komplett dicht ──
+  if (!password) {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse(
+        "Server misconfiguration: APP_PASSWORD missing.",
+        { status: 503 },
+      );
     }
+    return NextResponse.next(); // dev: kein Gate
   }
 
+  const ip =
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
+  const now = Date.now();
+
+  if (isRateLimited(ip, now)) {
+    return new NextResponse("Zu viele Fehlversuche. Bitte später erneut.", {
+      status: 429,
+      headers: { "Retry-After": "300" },
+    });
+  }
+
+  const expectedUser = process.env.APP_USER || "aw";
+  if (verifyBasicAuth(req.headers.get("authorization"), expectedUser, password)) {
+    fails.delete(ip);
+    return NextResponse.next();
+  }
+
+  recordFail(ip, now);
   return new NextResponse("Anmeldung erforderlich.", {
     status: 401,
     headers: {

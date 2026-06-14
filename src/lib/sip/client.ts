@@ -141,7 +141,8 @@ export class EasybellSipClient {
         : digits;
     const domain = this.cfg?.registrar ?? "voip.easybell.de";
     const target = `sip:${e164}@${domain}`;
-    console.log("[SIP] dialing →", target);
+    // PII-Redaction: volle Rufnummer NICHT loggen, nur die letzten 3 Ziffern.
+    console.log("[SIP] dialing → sip:***" + e164.slice(-3) + "@" + domain);
 
     const session = this.ua.call(target, {
       mediaConstraints: { audio: true, video: false },

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
+import { OWNER_ID } from "@/lib/utils";
 import type { FinderLead } from "@/lib/finder/types";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { finderImportSchema } from "@/lib/validation";
 
 /**
  * POST /api/finder/import
@@ -19,8 +22,6 @@ function toSource(s: FinderLead["source"]): string {
 
 /**
  * Provisorischer Pain-Score beim Import (niedriger = heißer = höhere Priorität).
- * Wird vom späteren Voll-Audit verfeinert; sorgt aber sofort für eine sinnvolle
- * Queue-Reihenfolge statt zufälliger Sortierung.
  */
 function quickPainScore(l: FinderLead): number {
   let s = 60;
@@ -32,30 +33,35 @@ function quickPainScore(l: FinderLead): number {
 }
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const parsed = await parseJson(req, finderImportSchema);
+  if (parsed.response) return parsed.response;
+  const leads = parsed.data.leads as unknown as FinderLead[];
+
+  if (leads.length === 0)
+    return NextResponse.json(
+      { ok: false, error: "Keine Leads übergeben." },
+      { status: 400 },
+    );
+
+  if (isMockMode) {
+    return NextResponse.json(
+      {
+        ok: false,
+        mock: true,
+        message: "Demo-Modus: ohne DATABASE_URL wird nicht gespeichert.",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
-    const body = (await req.json()) as { leads?: FinderLead[] };
-    const leads = Array.isArray(body.leads) ? body.leads : [];
-    if (leads.length === 0)
-      return NextResponse.json(
-        { ok: false, error: "Keine Leads übergeben." },
-        { status: 400 },
-      );
-
-    if (isMockMode) {
-      return NextResponse.json(
-        {
-          ok: false,
-          mock: true,
-          message: "Demo-Modus: ohne DATABASE_URL wird nicht gespeichert.",
-        },
-        { status: 503 },
-      );
-    }
-
     const { db } = await import("@/db");
     const { leads: leadsTable } = await import("@/db/schema");
     const { and, eq, isNull } = await import("drizzle-orm");
-    const ownerId = process.env.OWNER_ID ?? "00000000-0000-0000-0000-000000000001";
+    const ownerId = OWNER_ID;
 
     let inserted = 0;
     let skipped = 0;
@@ -97,9 +103,7 @@ export async function POST(req: NextRequest) {
           website: l.website,
           status: "new",
           source: toSource(l.source) as never,
-          // Provisorischer Pain-Score → Queue sortiert sofort sinnvoll.
           painScore: quickPainScore(l),
-          // Verkaufs-Signale für die spätere Anreicherung/Anzeige.
           custom: {
             builderPlatform: l.builderPlatform ?? null,
             rating: l.rating ?? null,
@@ -114,19 +118,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Post-Import: frische Leads im Hintergrund auditieren (fire-and-forget,
-    // blockiert die Import-Antwort nicht — verfeinert painScore + setzt Hook).
+    // Post-Import: frische Leads im Hintergrund auditieren (fire-and-forget).
+    // Der Authorization-Header wird weitergereicht, damit der interne Call die
+    // (jetzt erzwungene) Auth-Prüfung von /api/audit/pending passiert.
     if (inserted > 0) {
       const origin = req.nextUrl.origin;
+      const auth = req.headers.get("authorization");
       void fetch(`${origin}/api/audit/pending`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-owner-id": ownerId },
+        headers: {
+          "Content-Type": "application/json",
+          ...(auth ? { authorization: auth } : {}),
+        },
         body: JSON.stringify({ limit: Math.min(10, inserted) }),
       }).catch(() => {});
     }
 
     return NextResponse.json({ ok: true, inserted, skipped, audited: inserted > 0 });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("finder/import", err);
   }
 }

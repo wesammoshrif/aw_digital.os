@@ -15,6 +15,7 @@ import { runAudit } from "@/lib/audit/website";
 import { getTradeCard, fillTradeHook } from "@/lib/souffleur/tradePlaybook";
 import { isMockMode } from "@/lib/mode";
 import { OWNER_ID } from "@/lib/utils";
+import { requireAuth, serverError } from "@/lib/api";
 
 /** Hook für Leads OHNE Website — das stärkste Kaufsignal. */
 function websiteLessHook(
@@ -28,8 +29,11 @@ function websiteLessHook(
 }
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   try {
-    const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
+    const ownerId = OWNER_ID;
 
     // Body ist optional — leerer/ungültiger Body darf nicht crashen.
     let limit = 5;
@@ -147,6 +151,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, audited: auditedCount });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("audit/pending", err);
   }
 }

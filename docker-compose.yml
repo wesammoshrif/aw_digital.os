@@ -46,7 +46,7 @@ services:
         echo "[cron] gestartet — Tick jede Stunde"
         while true; do
           sleep 3600
-          curl -s -m 30 -H "x-cron-secret: $$CRON_SECRET" \
+          curl -s -m 30 -X POST -H "x-cron-secret: $$CRON_SECRET" \
             http://app:3000/api/cron/tick >/dev/null 2>&1 || true
         done
 

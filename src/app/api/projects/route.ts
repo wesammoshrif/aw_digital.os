@@ -6,16 +6,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
 import { OWNER_ID } from "@/lib/utils";
-
-interface NewProjectInput {
-  name?: string;
-  leadId?: string;
-  status?: string;
-  description?: string;
-  deadline?: string;
-}
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { projectCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   if (isMockMode) {
     return NextResponse.json(
       {
@@ -27,8 +24,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = (await req.json().catch(() => ({}))) as NewProjectInput;
-  if (!body.name?.trim()) {
+  const parsed = await parseJson(req, projectCreateSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
+
+  if (!body.name.trim()) {
     return NextResponse.json(
       { ok: false, error: "Projektname ist Pflicht." },
       { status: 400 },
@@ -38,7 +38,6 @@ export async function POST(req: NextRequest) {
   try {
     const { db } = await import("@/db");
     const { projects } = await import("@/db/schema");
-    const ownerId = process.env.OWNER_ID ?? OWNER_ID;
 
     const leadId = body.leadId?.trim();
     if (!leadId) {
@@ -51,7 +50,7 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(projects)
       .values({
-        ownerId,
+        ownerId: OWNER_ID,
         leadId,
         name: body.name.trim(),
         status: (body.status?.trim() ||
@@ -66,9 +65,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 },
-    );
+    return serverError("projects POST", err);
   }
 }

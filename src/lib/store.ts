@@ -63,8 +63,12 @@ export async function getProjectByLeadId(leadId: string) {
   if (isMockMode) return mockProjects.find((p) => p.leadId === leadId) ?? null;
   const { db } = await import("@/db");
   const { projects } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const [row] = await db.select().from(projects).where(eq(projects.leadId, leadId)).limit(1);
+  const { eq, and } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.leadId, leadId), eq(projects.ownerId, OWNER_ID)))
+    .limit(1);
   return row ?? null;
 }
 
@@ -73,8 +77,12 @@ export async function getProject(id: string) {
   if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { projects } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const [row] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
+  const { eq, and } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, id), eq(projects.ownerId, OWNER_ID)))
+    .limit(1);
   return row ?? null;
 }
 
@@ -248,8 +256,12 @@ export async function getLead(id: string) {
   if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { leads } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const [row] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+  const { eq, and } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(leads)
+    .where(and(eq(leads.id, id), eq(leads.ownerId, OWNER_ID)))
+    .limit(1);
   return row ?? null;
 }
 
@@ -303,8 +315,12 @@ export async function getAudit(id: string) {
   if (!UUID_RE.test(id)) return null;
   const { db } = await import("@/db");
   const { audits } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const [row] = await db.select().from(audits).where(eq(audits.id, id)).limit(1);
+  const { eq, and } = await import("drizzle-orm");
+  const [row] = await db
+    .select()
+    .from(audits)
+    .where(and(eq(audits.id, id), eq(audits.ownerId, OWNER_ID)))
+    .limit(1);
   return row ?? null;
 }
 
@@ -317,11 +333,11 @@ export async function getLatestAuditForLead(leadId: string) {
   }
   const { db } = await import("@/db");
   const { audits } = await import("@/db/schema");
-  const { eq, desc } = await import("drizzle-orm");
+  const { eq, and, desc } = await import("drizzle-orm");
   const [row] = await db
     .select()
     .from(audits)
-    .where(eq(audits.leadId, leadId))
+    .where(and(eq(audits.leadId, leadId), eq(audits.ownerId, OWNER_ID)))
     .orderBy(desc(audits.createdAt))
     .limit(1);
   return row ?? null;

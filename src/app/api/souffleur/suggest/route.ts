@@ -15,6 +15,8 @@ import {
   classifyNein,
   type NeinTyp,
 } from "@/lib/souffleur/strategies";
+import { requireAuth, parseJson } from "@/lib/api";
+import { souffleurSuggestSchema } from "@/lib/validation";
 
 const SYSTEM = `Du bist ein Echtzeit-Verkaufs-Souffleur für Kalt-Akquise in Deutschland.
 Ein Solo-Berater verkauft Premium-Websites (~2.000 €) + Wartung an Handwerksbetriebe.
@@ -28,11 +30,16 @@ GOLDENE REGELN (immer einhalten):
 ${GOLDEN_RULES.map((r) => `- ${r}`).join("\n")}`;
 
 // GET: Verfügbarkeits-Check für den Readiness-Chip
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
   return NextResponse.json({ ok: !!process.env.ANTHROPIC_API_KEY });
 }
 
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return NextResponse.json({
@@ -42,15 +49,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json().catch(() => ({}))) as {
-    transcript?: string;
-    hook?: string | null;
-    company?: string;
-    trade?: string | null;
-    tradeContext?: string | null;
-    neinTyp?: NeinTyp | null;
-    phase?: string | null;
-  };
+  const parsed = await parseJson(req, souffleurSuggestSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   try {
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
@@ -61,7 +62,8 @@ export async function POST(req: NextRequest) {
       : "";
 
     // Nein-Gradient erkennen (Client kann vorgeben, sonst aus Transkript).
-    const neinTyp = body.neinTyp ?? classifyNein(body.transcript);
+    const neinTyp =
+      (body.neinTyp as NeinTyp | null) ?? classifyNein(body.transcript);
     const neinBlock = neinTyp
       ? `\nNein-Typ erkannt: ${neinTyp} → ${NEIN_GRADIENTEN.find((g) => g.typ === neinTyp)?.behandlung ?? ""}\n`
       : "";
@@ -93,8 +95,9 @@ Der nächste Satz, den ich sagen soll:`,
 
     return NextResponse.json({ ok: true, line });
   } catch (err) {
+    console.error("[souffleur/suggest]", err);
     return NextResponse.json(
-      { ok: false, message: `KI-Fehler: ${String(err)}` },
+      { ok: false, message: "KI-Souffleur momentan nicht verfügbar." },
       { status: 200 },
     );
   }

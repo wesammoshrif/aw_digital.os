@@ -2,19 +2,22 @@
  * POST /api/invoices/[id]/convert
  *
  * Wandelt ein angenommenes Angebot (kind = "quote") in eine Rechnung
- * (kind = "invoice") um. Das Angebot wird auf status = "accepted" gesetzt
- * und via convertedInvoiceId mit der neuen Rechnung verknüpft.
+ * (kind = "invoice") um. Owner-gescoped (IDOR-Schutz).
  * Im Mock-Modus ist die Umwandlung deaktiviert (kein Insert möglich).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
 import { OWNER_ID } from "@/lib/utils";
+import { requireAuth, serverError } from "@/lib/api";
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const { id } = await params;
 
   if (isMockMode) {
@@ -27,14 +30,11 @@ export async function POST(
   try {
     const { db } = await import("@/db");
     const { invoices } = await import("@/db/schema");
-    const { eq } = await import("drizzle-orm");
+    const { eq, and } = await import("drizzle-orm");
+    const scope = and(eq(invoices.id, id), eq(invoices.ownerId, OWNER_ID));
 
-    // Angebot laden
-    const [quote] = await db
-      .select()
-      .from(invoices)
-      .where(eq(invoices.id, id))
-      .limit(1);
+    // Angebot laden (owner-gescoped)
+    const [quote] = await db.select().from(invoices).where(scope).limit(1);
 
     if (!quote || quote.kind !== "quote") {
       return NextResponse.json(
@@ -71,7 +71,7 @@ export async function POST(
       );
     }
 
-    // Angebot als angenommen markieren und verknüpfen
+    // Angebot als angenommen markieren und verknüpfen (owner-gescoped)
     await db
       .update(invoices)
       .set({
@@ -79,10 +79,10 @@ export async function POST(
         convertedInvoiceId: created.id,
         updatedAt: new Date(),
       })
-      .where(eq(invoices.id, id));
+      .where(scope);
 
     return NextResponse.json({ ok: true, invoiceId: created.id });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("invoices/[id]/convert", err);
   }
 }

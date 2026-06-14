@@ -6,24 +6,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OWNER_ID } from "@/lib/utils";
 import { isMockMode } from "@/lib/mode";
-
-interface NewInvoiceInput {
-  leadId?: string;
-  invoiceNumber?: string;
-  kind?: "quote" | "invoice";
-  type?: string;
-  amount?: string | number;
-  status?: string;
-  dueDate?: string;
-  notes?: string;
-}
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { invoiceCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as NewInvoiceInput;
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const parsed = await parseJson(req, invoiceCreateSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   if (
-    !body.leadId?.toString().trim() ||
-    !body.invoiceNumber?.toString().trim() ||
+    !body.leadId.toString().trim() ||
+    !body.invoiceNumber.toString().trim() ||
     body.amount === undefined ||
     body.amount === null ||
     body.amount.toString().trim() === ""
@@ -48,14 +44,13 @@ export async function POST(req: NextRequest) {
   try {
     const { db } = await import("@/db");
     const { invoices } = await import("@/db/schema");
-    const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
 
     const [row] = await db
       .insert(invoices)
       .values({
-        ownerId,
-        leadId: body.leadId!.toString().trim(),
-        invoiceNumber: body.invoiceNumber!.toString().trim(),
+        ownerId: OWNER_ID,
+        leadId: body.leadId.toString().trim(),
+        invoiceNumber: body.invoiceNumber.toString().trim(),
         kind: (body.kind ?? "quote") as "quote" | "invoice",
         type: (body.type ?? "one_time") as
           | "one_time"
@@ -82,9 +77,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 },
-    );
+    return serverError("invoices POST", err);
   }
 }

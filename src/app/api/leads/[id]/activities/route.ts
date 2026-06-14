@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { activitySchema } from "@/lib/validation";
+import { OWNER_ID } from "@/lib/utils";
 
 const ACTIVITY_TYPES = [
   "call",
@@ -21,19 +24,14 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id: leadId } = await params;
-  const body = (await req.json().catch(() => ({}))) as {
-    type?: string;
-    title?: string;
-    payload?: Record<string, unknown>;
-  };
+  const denied = requireAuth(req);
+  if (denied) return denied;
 
-  if (!body.type || !body.title) {
-    return NextResponse.json(
-      { ok: false, error: "Type und Title sind erforderlich" },
-      { status: 400 },
-    );
-  }
+  const { id: leadId } = await params;
+  const parsed = await parseJson(req, activitySchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
+
   if (!ACTIVITY_TYPES.includes(body.type)) {
     return NextResponse.json(
       { ok: false, error: `Ungültiger Activity-Type: ${body.type}` },
@@ -57,7 +55,7 @@ export async function POST(
     const [newActivity] = await db
       .insert(activities)
       .values({
-        ownerId: process.env.OWNER_ID || "00000000-0000-0000-0000-000000000001",
+        ownerId: OWNER_ID,
         leadId,
         type: body.type as never,
         title: body.title,
@@ -70,7 +68,6 @@ export async function POST(
     }
     return NextResponse.json({ ok: true, activity: newActivity });
   } catch (err) {
-    console.error("[Activities] Failed to create:", err);
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("activities POST", err);
   }
 }

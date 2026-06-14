@@ -1,9 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { dashboardSummary } from "@/lib/store";
+import { requireAuth } from "@/lib/api";
 
+export async function GET(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
 
-export async function GET() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return NextResponse.json({ ok: false, message: "ANTHROPIC_API_KEY fehlt." });
@@ -21,7 +24,7 @@ export async function GET() {
     - Aktive Projekte: ${data.activeProjects.length}
     - Umsatz diesen Monat: ${data.revenueThisMonth} €
 
-    Basierend auf diesen Daten, gib mir 3 kurze, extrem "geile" und motivierende Tipps für heute. 
+    Basierend auf diesen Daten, gib mir 3 kurze, extrem "geile" und motivierende Tipps für heute.
     Einer für Akquise, einer für Projekt-Management, einer für Finanzen.
     Kurz, knackig, auf Augenhöhe. Antworte in JSON: { "tips": ["...", "...", "..."] }`;
 
@@ -45,7 +48,7 @@ export async function GET() {
     }
     return NextResponse.json({ ok: true, ...json });
   } catch (err) {
-    console.error(err);
+    console.error("[ai/strategy]", err);
     return NextResponse.json({ ok: false, message: "Claude Fehler" });
   }
 }

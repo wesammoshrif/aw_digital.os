@@ -19,8 +19,10 @@ export async function sendEmail({
   const key = process.env.RESEND_API_KEY;
 
   if (!key) {
+    // PII-Redaction: Empfängeradresse maskieren (nicht im Klartext loggen).
+    const maskedTo = to.replace(/(.).*(@.*)/, "$1***$2");
     console.info(
-      `[email] kein RESEND_API_KEY — würde senden an "${to}": ${subject}`,
+      `[email] kein RESEND_API_KEY — würde senden an "${maskedTo}": ${subject}`,
     );
     return { sent: false, reason: "no-key" };
   }

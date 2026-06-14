@@ -13,16 +13,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { scrapeTrade, TRADE_MAP, type OsmLeadRaw } from "@/lib/scrapers/osm";
 import { OWNER_ID } from "@/lib/utils";
 import { isNull, and, eq } from "drizzle-orm";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { scrapeOsmSchema } from "@/lib/validation";
 
 // Roh-Lead im Mock-Pfad: mutierbar + optionaler contactName aus der
 // Impressum-Anreicherung (OsmLeadRaw selbst kennt kein contactName-Feld).
 type RawLead = OsmLeadRaw & { contactName?: string | null };
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { city?: string; trades?: string[] };
-  const city = body.city ?? "Hannover";
-  const trades = body.trades ?? ["dachdecker", "maler", "elektriker"];
-  const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const parsed = await parseJson(req, scrapeOsmSchema);
+  if (parsed.response) return parsed.response;
+  const city = parsed.data.city ?? "Hannover";
+  const trades = parsed.data.trades ?? ["dachdecker", "maler", "elektriker"];
+  const ownerId = OWNER_ID;
 
   // ── Mock-Modus: nur scrapen, kein Persist ─────────────────────────
   if (!process.env.DATABASE_URL) {
@@ -40,11 +46,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Leichte Anreicherung (nur Mock-Pfad) ──────────────────────────
-    // Für die ERSTEN 5 Leads OHNE email/phone, aber MIT website: Impressum/
-    // Kontakt parsen (KEIN PageSpeed-Audit inline — das wäre zu langsam).
-    // Streng defensiv via Promise.allSettled: darf den Scrape niemals
-    // crashen oder bis-Timeout ausbremsen, Roh-Liste wird so oder so zurück-
-    // gegeben. enrichFromWebsite wirft selbst nie und hat ~6s Timeout/Request.
     try {
       const { enrichFromWebsite } = await import("@/lib/enrich/impressum");
       const candidates = (rawLeads as RawLead[])
@@ -54,7 +55,6 @@ export async function POST(req: NextRequest) {
       await Promise.allSettled(
         candidates.map(async (lead) => {
           const enriched = await enrichFromWebsite(lead.website as string);
-          // Nur befüllen, was noch leer ist — bestehende Daten nicht überschreiben.
           if (enriched.email && !lead.email) lead.email = enriched.email;
           if (enriched.phone && !lead.phone) lead.phone = enriched.phone;
           if (enriched.contactName && !lead.contactName)
@@ -102,7 +102,6 @@ export async function POST(req: NextRequest) {
       rawCount += raws.length;
 
       for (const lead of raws) {
-        // dedup: company + phone (oder company + leerer phone)
         const existing = await db
           .select({ id: leads.id })
           .from(leads)
@@ -129,7 +128,6 @@ export async function POST(req: NextRequest) {
           website: lead.website,
           status: "new",
           source: "osm",
-          // Sofort fällig — Heute-Queue zeigt frische Scrape-Leads direkt
           nextStep: "Erstanruf",
           nextStepAt: new Date(),
           custom: { osmId: lead.osmId, lat: lead.lat, lon: lead.lon, raw: lead.raw },
@@ -166,6 +164,6 @@ export async function POST(req: NextRequest) {
         /* swallow — wir wollen den ursprünglichen Fehler als JSON melden */
       }
     }
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("scrape/osm", err);
   }
 }

@@ -6,11 +6,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAudit, getLead } from "@/lib/store";
 import { renderOnepagerHtml } from "@/lib/pdf/onepager";
+import { requireAuth } from "@/lib/api";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const { id } = await params;
   const audit = await getAudit(id);
   if (!audit) {

@@ -5,21 +5,18 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { OWNER_ID } from "@/lib/utils";
-
-interface NewLeadInput {
-  company?: string;
-  trade?: string;
-  city?: string;
-  postalCode?: string;
-  phone?: string;
-  email?: string;
-  website?: string;
-  notes?: string;
-}
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { leadCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as NewLeadInput;
-  if (!body.company?.trim()) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const parsed = await parseJson(req, leadCreateSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
+
+  if (!body.company.trim()) {
     return NextResponse.json(
       { ok: false, error: "Firma ist Pflicht." },
       { status: 400 },
@@ -41,12 +38,11 @@ export async function POST(req: NextRequest) {
   try {
     const { db } = await import("@/db");
     const { leads } = await import("@/db/schema");
-    const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
 
     const [row] = await db
       .insert(leads)
       .values({
-        ownerId,
+        ownerId: OWNER_ID,
         company: body.company.trim(),
         trade: body.trade?.trim() || null,
         city: body.city?.trim() || null,
@@ -67,9 +63,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 },
-    );
+    return serverError("leads POST", err);
   }
 }

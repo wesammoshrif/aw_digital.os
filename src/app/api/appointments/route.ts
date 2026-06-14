@@ -8,20 +8,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
 import { createAppointment } from "@/lib/store";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { appointmentSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as {
-    leadId?: string;
-    startsAt?: string;
-    title?: string;
-  };
+  const denied = requireAuth(req);
+  if (denied) return denied;
 
-  if (!body.leadId?.trim() || !body.startsAt) {
-    return NextResponse.json(
-      { ok: false, error: "leadId und startsAt sind Pflicht." },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJson(req, appointmentSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
+
   const startsAt = new Date(body.startsAt);
   if (isNaN(startsAt.getTime())) {
     return NextResponse.json(
@@ -46,6 +43,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("appointments POST", err);
   }
 }

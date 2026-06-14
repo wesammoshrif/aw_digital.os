@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Reproduzierbare Installation aus dem Lockfile.
+      - run: npm ci
+      # Lint ist beratend (vorbestehende Alt-Schulden brechen die Pipeline nicht).
+      - run: npm run lint
+        continue-on-error: true
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_DB_CONNECTED: "true"
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # High-Vulns brechen den Build; Moderate werden nur gemeldet.
+      - run: npm audit --audit-level=high

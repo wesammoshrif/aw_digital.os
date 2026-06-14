@@ -12,17 +12,17 @@ import { db } from "@/db";
 import { audits, leads } from "@/db/schema";
 import { runAudit } from "@/lib/audit/website";
 import { OWNER_ID } from "@/lib/utils";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { auditSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json()) as { leadId?: string; websiteUrl?: string };
-  if (!body.websiteUrl) {
-    return NextResponse.json(
-      { ok: false, error: "websiteUrl is required" },
-      { status: 400 },
-    );
-  }
-  const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const parsed = await parseJson(req, auditSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   try {
     // Lead-Kontext (Gewerk/Stadt) für den branchenscharfen Hook ziehen.
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const [stored] = await db
       .insert(audits)
       .values({
-        ownerId,
+        ownerId: OWNER_ID,
         leadId: body.leadId ?? null,
         websiteUrl: result.websiteUrl,
         mobileScore: result.mobileScore,
@@ -78,11 +78,11 @@ export async function POST(req: NextRequest) {
           auditPayload: result as unknown as Record<string, unknown>,
           updatedAt: new Date(),
         })
-        .where(eq(leads.id, body.leadId));
+        .where(and(eq(leads.id, body.leadId), eq(leads.ownerId, OWNER_ID)));
     }
 
     return NextResponse.json({ ok: true, audit: stored, result });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("audit POST", err);
   }
 }

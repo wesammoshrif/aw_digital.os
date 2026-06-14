@@ -7,17 +7,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, parseJson } from "@/lib/api";
+import { souffleurSummarySchema } from "@/lib/validation";
 
 const SYSTEM =
   "Du fasst ein Verkaufs-Telefonat für die Akquise-CRM eines Webdesigners zusammen. Antworte NUR als valides JSON.";
 
-interface SummaryInput {
-  transcript?: string;
-  company?: string;
-  trade?: string | null;
-}
-
 export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) {
     return NextResponse.json({
@@ -26,7 +25,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const body = (await req.json().catch(() => ({}))) as SummaryInput;
+  const parsed = await parseJson(req, souffleurSummarySchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   if (!body.transcript?.trim()) {
     return NextResponse.json({ ok: false, message: "Kein Transkript." });
@@ -64,8 +65,6 @@ Gib NUR dieses JSON zurück:
       .join(" ")
       .trim();
 
-    // Robust: Code-Fences entfernen + den größten {...}-Block extrahieren,
-    // falls Haiku den JSON in ```json … ``` wickelt oder Text drumherum setzt.
     const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
@@ -79,8 +78,9 @@ Gib NUR dieses JSON zurück:
 
     return NextResponse.json({ ok: true, ...(json as Record<string, unknown>) });
   } catch (err) {
+    console.error("[souffleur/summary]", err);
     return NextResponse.json(
-      { ok: false, message: `KI-Fehler: ${String(err)}` },
+      { ok: false, message: "KI momentan nicht verfügbar." },
       { status: 200 },
     );
   }

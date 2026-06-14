@@ -7,9 +7,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
-
-const OWNER_ID =
-  process.env.OWNER_ID ?? "00000000-0000-0000-0000-000000000001";
+import { OWNER_ID } from "@/lib/utils";
+import { requireAuth, serverError, parseJson } from "@/lib/api";
+import { callCreateSchema } from "@/lib/validation";
 
 const DISPO_VALUES = [
   "no_answer",
@@ -24,25 +24,13 @@ const DISPO_VALUES = [
 
 type Dispo = (typeof DISPO_VALUES)[number];
 
-interface NewCallInput {
-  leadId?: string;
-  dispo?: string;
-  durationSec?: number;
-  transcript?: string | null;
-  summary?: Record<string, unknown> | null;
-  sentiment?: string | null;
-  externalCallId?: string | null;
-}
-
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as NewCallInput;
+  const denied = requireAuth(req);
+  if (denied) return denied;
 
-  if (!body.leadId?.trim()) {
-    return NextResponse.json(
-      { ok: false, error: "leadId ist Pflicht." },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJson(req, callCreateSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   // Mock-Guard: kein DB-Zugriff, aber freundliches ok für den Client.
   if (isMockMode) {
@@ -74,9 +62,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: String(err) },
-      { status: 500 },
-    );
+    return serverError("calls POST", err);
   }
 }

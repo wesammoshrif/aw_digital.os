@@ -2,17 +2,19 @@
  * POST /api/souffleur/deepgram-token
  *
  * Mintet einen kurzlebigen Deepgram-Token für die Browser-WebSocket-
- * Verbindung (damit der echte Key nicht im Client landet).
- * Fällt auf den Roh-Key zurück, falls /auth/grant nicht verfügbar ist
- * (Self-Hosting, Einzelnutzer — akzeptabel).
+ * Verbindung. Der echte DEEPGRAM_API_KEY verlässt NIEMALS den Server —
+ * schlägt /auth/grant fehl, läuft der Souffleur lokal weiter (Mic + Playbook).
  *
- * Ohne DEEPGRAM_API_KEY → freundlicher Hinweis, der Souffleur läuft
- * weiter lokal (Mic + Playbook).
+ * Hinter requireAuth: nur authentifizierte Nutzer.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const key = process.env.DEEPGRAM_API_KEY;
   if (!key) {
     return NextResponse.json({
@@ -36,17 +38,22 @@ export async function POST() {
       const data = (await res.json()) as { access_token: string };
       return NextResponse.json({ ok: true, token: data.access_token });
     }
-    // Fallback: Roh-Key (Single-User-Self-Hosting)
-    console.warn(
-      "[deepgram-token] /auth/grant fehlgeschlagen (Status " +
-        res.status +
-        ") — Roh-Key geht an den Browser. Nur für Single-User-Betrieb ok.",
+
+    // KEIN Roh-Key-Fallback mehr — der Account-Key würde sonst im Browser landen.
+    console.error(
+      "[deepgram-token] /auth/grant fehlgeschlagen (Status " + res.status + ")",
     );
-    return NextResponse.json({ ok: true, token: key, fallback: true });
-  } catch {
-    console.warn(
-      "[deepgram-token] /auth/grant nicht erreichbar — Roh-Key geht an den Browser.",
-    );
-    return NextResponse.json({ ok: true, token: key, fallback: true });
+    return NextResponse.json({
+      ok: false,
+      message:
+        "Transkription momentan nicht verfügbar (Deepgram-Grant fehlgeschlagen). Der Souffleur läuft lokal weiter.",
+    });
+  } catch (err) {
+    console.error("[deepgram-token] /auth/grant nicht erreichbar", err);
+    return NextResponse.json({
+      ok: false,
+      message:
+        "Transkription momentan nicht erreichbar. Der Souffleur läuft lokal weiter.",
+    });
   }
 }

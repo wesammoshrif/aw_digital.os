@@ -14,16 +14,29 @@ import { OWNER_ID } from "@/lib/utils";
 import { isMockMode } from "@/lib/mode";
 import { sendEmail } from "@/lib/email";
 import { listAppointments, listInvoices, nowAnchor } from "@/lib/store";
+import { timingSafeEqualStr } from "@/lib/auth";
 
 const RECURRING_TYPES = ["recurring_maintenance", "recurring_hosting"];
 
 async function handle(req: NextRequest) {
-  // ── Schutz: x-cron-secret ODER Vercels „Authorization: Bearer …" ──
+  // ── Schutz: x-cron-secret ODER „Authorization: Bearer …" (timing-safe) ──
   const secret = process.env.CRON_SECRET;
-  if (secret) {
+  if (!secret) {
+    // Fail-closed: in Production MUSS ein CRON_SECRET gesetzt sein.
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { ok: false, error: "CRON_SECRET not configured" },
+        { status: 503 },
+      );
+    }
+    // lokale Entwicklung: ohne Secret erlaubt
+  } else {
+    const headerSecret = req.headers.get("x-cron-secret");
+    const auth = req.headers.get("authorization");
+    const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : "";
     const ok =
-      req.headers.get("x-cron-secret") === secret ||
-      req.headers.get("authorization") === `Bearer ${secret}`;
+      (!!headerSecret && timingSafeEqualStr(headerSecret, secret)) ||
+      (!!bearer && timingSafeEqualStr(bearer, secret));
     if (!ok) {
       return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
@@ -135,10 +148,8 @@ async function handle(req: NextRequest) {
   }
 }
 
-export async function GET(req: NextRequest) {
-  return handle(req);
-}
-
+// Nur POST — ein versehentlicher GET (Link/Prefetch) darf den Tick (Mailversand)
+// nicht auslösen.
 export async function POST(req: NextRequest) {
   return handle(req);
 }

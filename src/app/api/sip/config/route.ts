@@ -1,18 +1,18 @@
 /**
  * GET /api/sip/config
  *
- * Gibt die easybell-SIP-Konfiguration an den Browser-Softphone.
- *
- * Für Single-User-Self-Hosting akzeptabel — sobald Auth dran ist,
- * sollte hier ein Auth-Check + kurzlebige Tokens stehen.
+ * Gibt die SIP-Konfiguration an das Browser-Softphone. Enthält Zugangsdaten,
+ * daher hinter requireAuth (nur authentifizierte Nutzer).
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/api";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   // ── Bevorzugt: eigene Asterisk-Brücke (echtes In-Browser-Telefonieren) ──
-  // Asterisk registriert den easybell-TRUNK und bietet dem Browser ein WSS-
-  // Gateway — das, was easybell selbst nicht hergibt (Vapi-Nachbau).
   if (
     process.env.ASTERISK_WSS &&
     process.env.ASTERISK_SIP_USER &&

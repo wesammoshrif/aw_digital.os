@@ -3,18 +3,19 @@
  *
  * Holt aktuelle Handelsregister-Neueintragungen, filtert auf Handwerk
  * und speichert Treffer als Trigger-Events.
- *
- * Lässt sich später via Inngest oder Supabase pg_cron stündlich/täglich
- * triggern.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAllNeugruendungen } from "@/lib/scrapers/handelsregister";
 import { OWNER_ID } from "@/lib/utils";
 import { and, eq } from "drizzle-orm";
+import { requireAuth, serverError } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
-  const ownerId = req.headers.get("x-owner-id") ?? OWNER_ID;
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
+  const ownerId = OWNER_ID;
 
   try {
     const events = await fetchAllNeugruendungen();
@@ -70,6 +71,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, total: events.length, inserted, skipped });
   } catch (err) {
-    return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
+    return serverError("triggers/handelsregister", err);
   }
 }
