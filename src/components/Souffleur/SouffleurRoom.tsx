@@ -146,8 +146,12 @@ export function SouffleurRoom({
   );
 
   const hookLine = useMemo(() => {
-    // Opener an „hat Website / keine Website" anpassen — sonst sagt der Berater
-    // „Ich habe Ihre Website angesehen", obwohl der Betrieb gar keine hat.
+    // Opener: branchenscharfer Einstieg als Hauptsatz, wenn das Gewerk erkannt
+    // ist — der wirkt sofort kundig. Sonst ein website-adaptiver Generik-Opener
+    // (kein „Ihre Website angesehen", wenn der Betrieb gar keine hat).
+    if (move.id === "opener" && tradeHook) {
+      return fillName(tradeHook);
+    }
     let base = move.line;
     if (move.id === "opener") {
       base = lead.website
@@ -155,7 +159,7 @@ export function SouffleurRoom({
         : "Guten Tag, hier ist [Name] von AW Digital. Ich habe geschaut, wie Ihr Betrieb online zu finden ist — {hook} Haben Sie 60 Sekunden?";
     }
     return fillName(fillHook(base, lead.auditHook));
-  }, [move, lead.auditHook, lead.website, fillName]);
+  }, [move, lead.auditHook, lead.website, tradeHook, fillName]);
 
   // Nein-Gradient aus dem letzten Kunden-Satz (für das Coach-Panel).
   const neinTyp = useMemo(
@@ -329,23 +333,29 @@ export function SouffleurRoom({
   // ── Gemeinsamer Kunden-Handler: Transkript + Matcher + Auto-Haiku ──
   const custRef = useRef("");
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Stale-Guard für Haiku-Antworten: nur die jüngste Antwort darf den Satz setzen.
+  const aiGenRef = useRef(0);
   const onCustomerText = useCallback(
     (text: string, sourceLabel: string) => {
       if (!text.trim()) return;
       setCustomerTranscript((prev) => (prev + " " + text).slice(-1400));
       custRef.current = (custRef.current + " " + text).slice(-1600);
 
-      // 1. Sofort: lokaler Matcher (0 ms)
-      const mv = matchMove(text);
+      // 1. Sofort: lokaler Matcher auf dem ROLLENDEN Transkript (0 ms) —
+      //    sonst fallen über zwei Deepgram-Chunks gesplittete Einwände
+      //    („keine" + „zeit dafür") durch und der Satz bleibt auf dem Opener.
+      const mv = matchMove(custRef.current);
       if (mv) {
         setMove(mv);
         setDetected(mv.label + " · " + sourceLabel);
         setAiLine(null);
       }
 
-      // 2. Debounced: Haiku verfeinert (~1 s) und ersetzt den Tipp
+      // 2. Debounced: Haiku verfeinert (~1 s). Stale-Guard: nur die jüngste
+      //    Antwort darf den Satz setzen (out-of-order-Schutz bei schnellen Finals).
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = setTimeout(async () => {
+        const gen = ++aiGenRef.current;
         try {
           const res = await fetch("/api/souffleur/suggest", {
             method: "POST",
@@ -360,7 +370,7 @@ export function SouffleurRoom({
                 : null,
             }),
           }).then((r) => r.json());
-          if (res.ok && res.line) setAiLine(res.line);
+          if (gen === aiGenRef.current && res.ok && res.line) setAiLine(res.line);
         } catch {
           /* lokaler Tipp bleibt stehen */
         }
@@ -591,6 +601,9 @@ export function SouffleurRoom({
   const resetCustomerContext = useCallback(() => {
     custRef.current = "";
     setCustomerTranscript("");
+    // Laufende Haiku-Fetches invalidieren — sonst füllt eine alte Antwort
+    // nach dem Reset (z.B. Test→echter Call) den Satz wieder.
+    aiGenRef.current++;
     if (aiDebounceRef.current) {
       clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = null;

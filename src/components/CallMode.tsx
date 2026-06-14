@@ -187,6 +187,13 @@ export function CallMode({
         setActive(false);
         return;
       }
+      // Termin aus dem Popup: NICHT blind mit Default-Datum speichern —
+      // den Date-Picker im Parent öffnen, damit das vereinbarte Datum zählt.
+      if (d.dispo === "appointment") {
+        setApptDate((prev) => prev || defaultApptDateTime());
+        setApptPicking(true);
+        return;
+      }
       if (d.dispo && valid.has(d.dispo)) {
         const meta = DISPOSITIONS.find((x) => x.key === d.dispo);
         saveDispo(d.dispo as Disposition, meta?.label ?? d.dispo);
