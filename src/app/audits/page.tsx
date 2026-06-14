@@ -27,7 +27,7 @@ export default async function AuditsPage() {
         </ButtonLink>
       }
     >
-      <div className="mb-6 grid grid-cols-4 gap-4">
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="px-4 py-3">
           <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
             Audits gesamt

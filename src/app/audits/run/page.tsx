@@ -140,7 +140,7 @@ function RunAuditInner() {
 
       {result && (
         <div className="mt-6 rounded-[16px] border border-[var(--color-hairline)] bg-white p-6 shadow-[var(--shadow-1)]">
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <ScoreTile label="Handy" value={result.mobileScore} />
             <ScoreTile label="Desktop" value={result.desktopScore} />
             <ScoreTile
@@ -169,7 +169,7 @@ function RunAuditInner() {
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-mute)]">
                 Google Lighthouse
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <LhRing label="Performance" value={result.lighthouse.performance} />
                 <LhRing label="Barrierefrei" value={result.lighthouse.accessibility} />
                 <LhRing label="Best Practices" value={result.lighthouse.bestPractices} />

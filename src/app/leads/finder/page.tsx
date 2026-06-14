@@ -554,7 +554,7 @@ export default function LeadsFinderPage() {
 
       {/* Ergebnis-Tabelle */}
       {leads.length > 0 && (
-        <Card className="mt-4 overflow-hidden p-0">
+        <Card className="mt-4 overflow-x-auto p-0">
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-surface-2)]">

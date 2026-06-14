@@ -940,7 +940,7 @@ export function SouffleurRoom({
             + Briefing einblenden
           </button>
         )}
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-4 md:flex-row">
         <div
           className={cn(
             "flex-[1.8] min-w-0 rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500",
@@ -974,7 +974,7 @@ export function SouffleurRoom({
 
           <p
             key={aiLine ?? hookLine}
-            className="tip-enter mt-3 text-[35px] font-bold leading-[1.13] tracking-[-0.028em] text-[var(--color-fg)]"
+            className="tip-enter mt-3 text-[26px] font-bold leading-[1.15] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[31px] md:text-[35px]"
           >
             {aiLine ?? hookLine}
           </p>
@@ -991,7 +991,7 @@ export function SouffleurRoom({
         </div>
 
           {/* RECHTS — kleine Strategie-Spalte */}
-          <aside className="w-[224px] shrink-0 space-y-2.5">
+          <aside className="w-full shrink-0 space-y-2.5 md:w-[224px]">
             <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
               <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
                 Strategie
@@ -1266,7 +1266,7 @@ export function SouffleurRoom({
           <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
             Einwand antippen
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             {QUICK_OBJECTIONS.map((id) => {
               const m = getMove(id);
               if (!m) return null;
@@ -1294,7 +1294,7 @@ export function SouffleurRoom({
           <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
             Abschluss antippen → groß
           </div>
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
             {CLOSING_TECHNIQUES.map((c) => (
               <button
                 key={c.id}
@@ -1442,8 +1442,8 @@ export function SouffleurRoom({
       </div>
 
       {/* ── Steuerleiste ────────────────────────────────────────── */}
-      <footer className="border-t border-[var(--color-hairline)] px-5 py-3">
-        <div className="flex items-center gap-3">
+      <footer className="border-t border-[var(--color-hairline)] px-3 py-2.5 md:px-5 md:py-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           <button
             onClick={listening ? stopMic : startMic}
             className={cn(
@@ -1477,7 +1477,7 @@ export function SouffleurRoom({
           </button>
           <Meter level={sysLevel} on={sysListening} label="Kunde" />
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5 md:ml-auto">
             {DISPOS.map((d) => (
               <button
                 key={d.key}

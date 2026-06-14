@@ -84,7 +84,7 @@ export default async function HomePage() {
       </section>
 
       {/* ── KPI row ────────────────────────────────────────────────── */}
-      <section className="mb-8 grid grid-cols-4 gap-5">
+      <section className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-5">
         <Kpi
           icon={Phone}
           label="Leads gesamt"
@@ -126,7 +126,7 @@ export default async function HomePage() {
 
       {/* ── Anruf-Statistik ────────────────────────────────────────── */}
       <section className="mb-8">
-        <Card className="grid grid-cols-4 divide-x divide-[var(--color-hairline)] p-0">
+        <Card className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-[var(--color-hairline)] p-0">
           <CallStat label="Anrufe" num={data.callStats.total} hint="protokolliert" />
           <CallStat
             label="Connect-Rate"

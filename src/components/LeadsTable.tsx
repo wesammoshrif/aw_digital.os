@@ -65,7 +65,7 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
         count={filtered.length}
       />
 
-      <div className="overflow-hidden rounded-[18px] bg-white shadow-[var(--shadow-1)] ring-1 ring-black/[0.04]">
+      <div className="overflow-x-auto rounded-[18px] bg-white shadow-[var(--shadow-1)] ring-1 ring-black/[0.04]">
         <table className="w-full text-[13.5px]">
           <thead>
             <tr className="border-b border-[var(--color-hairline)] text-left text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">

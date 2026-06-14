@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,6 +15,8 @@ import {
   Euro,
   CalendarClock,
   Radar,
+  Menu,
+  X,
 } from "lucide-react";
 import { Logo } from "./ui/Logo";
 import { cn } from "@/lib/utils";
@@ -37,6 +40,7 @@ export function Sidebar({
   streak: { current: number; record: number };
 }) {
   const path = usePathname();
+  const [open, setOpen] = useState(false);
 
   // Längster passender Nav-Pfad gewinnt (sonst leuchten /leads UND /leads/finder).
   const activeHref = NAV.reduce((best, item) => {
@@ -48,10 +52,44 @@ export function Sidebar({
   }, "");
 
   return (
-    <aside className="vibrancy sticky top-0 flex h-screen w-[240px] shrink-0 flex-col border-r border-[var(--color-hairline)] px-3 py-4">
-      <div className="px-2.5 pt-1 pb-5">
-        <Logo />
-      </div>
+    <>
+      {/* Hamburger — nur Handy/iPad-Hochkant (unter md) */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Menü öffnen"
+        className="vibrancy fixed left-3 top-2.5 z-[60] flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-hairline)] text-[var(--color-fg-dim)] shadow-[var(--shadow-1)] md:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Backdrop */}
+      <div
+        onClick={() => setOpen(false)}
+        className={cn(
+          "fixed inset-0 z-40 bg-black/30 transition-opacity duration-200 md:hidden",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+      />
+
+      <aside
+        className={cn(
+          "vibrancy fixed inset-y-0 left-0 z-50 flex h-screen w-[264px] flex-col border-r border-[var(--color-hairline)] px-3 py-4 transition-transform duration-200",
+          "md:sticky md:top-0 md:z-auto md:w-[240px] md:shrink-0 md:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        )}
+      >
+        <div className="flex items-center justify-between px-2.5 pt-1 pb-5">
+          <Logo />
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Menü schließen"
+            className="text-[var(--color-fg-mute)] md:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
       <button
         type="button"
@@ -70,6 +108,7 @@ export function Sidebar({
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => setOpen(false)}
               className={cn(
                 "group flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-[7px] text-[13.5px] font-medium transition-colors",
                 active
@@ -96,6 +135,7 @@ export function Sidebar({
         <StreakCard streak={streak} />
         <Link
           href="/settings"
+          onClick={() => setOpen(false)}
           className={cn(
             "flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-[7px] text-[13.5px] font-medium transition-colors",
             path === "/settings"
@@ -110,7 +150,8 @@ export function Sidebar({
           <span>Einstellungen</span>
         </Link>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 

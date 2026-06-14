@@ -19,7 +19,7 @@ export default function TelefonieSetupPage() {
       <div className="mx-auto max-w-3xl space-y-8">
         {/* ── Status-Karte ───────────────────────────────────────── */}
         <Card className="overflow-hidden p-0">
-          <div className="grid grid-cols-3 divide-x divide-[var(--color-hairline)]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 divide-x divide-[var(--color-hairline)]">
             <StatusTile
               icon={Phone}
               label="Wählen"

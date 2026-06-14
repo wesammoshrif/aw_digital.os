@@ -77,7 +77,7 @@ export default async function FinancesPage() {
         </>
       }
     >
-      <section className="mb-8 grid grid-cols-4 gap-5">
+      <section className="mb-8 grid grid-cols-2 sm:grid-cols-4 gap-5">
         <Kpi icon={FileText} label="Offene Angebote" value={eur(openQuoteValue)} hint={`${sentQuotes} versendet · ${acceptedQuotes} angenommen`} />
         <Kpi icon={Clock} label="Offene Rechnungen" value={eur(openInvoiceValue)} hint="Versendet + überfällig" />
         <Kpi icon={AlertTriangle} label="Überfällig" value={eur(overdueValue)} hint={overdueValue > 0 ? "Mahnung fällig" : "Alles im grünen Bereich"} tone={overdueValue > 0 ? "danger" : "ok"} />
@@ -136,7 +136,7 @@ function Section({
           {emptyText}
         </Card>
       ) : (
-        <Card className="p-0 overflow-hidden">
+        <Card className="p-0 overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-surface-2)]">

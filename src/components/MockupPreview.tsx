@@ -128,7 +128,7 @@ export function MockupPreview({
       </div>
 
       {/* ── services ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 p-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-8">
         {servicesFor(lead.trade).map((s) => (
           <div
             key={s}

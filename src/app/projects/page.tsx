@@ -35,7 +35,7 @@ export default async function ProjectsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          <Card className="p-0 overflow-hidden">
+          <Card className="p-0 overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-surface-2)]">

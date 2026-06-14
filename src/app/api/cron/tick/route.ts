@@ -18,10 +18,15 @@ import { listAppointments, listInvoices, nowAnchor } from "@/lib/store";
 const RECURRING_TYPES = ["recurring_maintenance", "recurring_hosting"];
 
 async function handle(req: NextRequest) {
-  // ── Optionaler Schutz ────────────────────────────────────────────
+  // ── Schutz: x-cron-secret ODER Vercels „Authorization: Bearer …" ──
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("x-cron-secret") !== secret) {
-    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  if (secret) {
+    const ok =
+      req.headers.get("x-cron-secret") === secret ||
+      req.headers.get("authorization") === `Bearer ${secret}`;
+    if (!ok) {
+      return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+    }
   }
 
   try {
