@@ -1,0 +1,23 @@
+# Secrets NIEMALS ins Image
+.env
+.env.local
+.env*.local
+.mcp.json
+
+# Build-/Dev-Artefakte
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+
+# Self-Host-Doku/VPS-Kram nicht nötig im Image
+voip-bridge
+graphify-out
+*.md
+oracle_voip.key
+scripts/scrape-kleinanzeigen.ts
+
+# OS
+.DS_Store
+Thumbs.db

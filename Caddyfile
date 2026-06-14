@@ -1,0 +1,7 @@
+# Domain anpassen! Subdomain via sslip.io zeigt automatisch auf die VPS-IP,
+# Caddy holt sich dafür automatisch ein Let's-Encrypt-Zertifikat.
+# Mit eigener Domain einfach die Zeile ersetzen (z.B. os.deine-domain.de).
+os.5-231-248-34.sslip.io {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
