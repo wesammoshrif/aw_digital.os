@@ -814,13 +814,14 @@ export function SouffleurRoom({
         </div>
       )}
 
-      {/* ── Großer Tipp ─────────────────────────────────────────── */}
+      {/* ── Was JETZT sagen (groß) + Strategie (klein, Seite) ───── */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="flex gap-4">
         <div
           className={cn(
-            "rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500",
+            "flex-[1.8] min-w-0 rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500",
             aiLine
-              ? "ring-[var(--color-copper-200)] shadow-[var(--shadow-copper)]"
+              ? "ring-[var(--color-copper-300)] shadow-[var(--shadow-copper)]"
               : "ring-black/[0.04]",
           )}
         >
@@ -828,14 +829,9 @@ export function SouffleurRoom({
             {aiLine && (
               <span className="breathe h-2 w-2 shrink-0 rounded-full bg-[var(--color-copper-500)]" />
             )}
-            <span className="rounded-full bg-[#e9f2fe] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-copper-700)]">
-              {aiLine ? "KI-Tipp" : KIND_LABEL[move.kind]}
+            <span className="rounded-full bg-[#0a3977] px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white">
+              Jetzt wörtlich sagen
             </span>
-            {detected && !aiLine && (
-              <span className="text-[11.5px] text-[var(--color-fg-mute)]">
-                erkannt: {detected}
-              </span>
-            )}
             <button
               onClick={copyLine}
               className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
@@ -854,75 +850,84 @@ export function SouffleurRoom({
 
           <p
             key={aiLine ?? hookLine}
-            className="tip-enter mt-3 text-[27px] font-semibold leading-[1.22] tracking-[-0.022em] text-[var(--color-fg)]"
+            className="tip-enter mt-3 text-[35px] font-bold leading-[1.13] tracking-[-0.028em] text-[var(--color-fg)]"
           >
             {aiLine ?? hookLine}
           </p>
 
-          {!aiLine && (
-            <div className="mt-4 flex flex-wrap gap-2">
+          {!aiLine && move.alts.length > 0 && (
+            <div className="mt-4 space-y-1">
               {move.alts.map((a, i) => (
-                <span
-                  key={i}
-                  className="rounded-[10px] bg-[var(--color-surface-2)] px-3 py-2 text-[13px] text-[var(--color-fg-dim)]"
-                >
-                  {a}
-                </span>
+                <p key={i} className="text-[13px] leading-snug text-[var(--color-fg-mute)]">
+                  <span className="font-semibold">oder:</span> {a}
+                </p>
               ))}
             </div>
           )}
-
-          <button
-            onClick={askAI}
-            disabled={aiBusy}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-copper-500)] px-3.5 py-1.5 text-[12.5px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-60"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {aiBusy ? "denkt…" : "KI-Tipp (Haiku)"}
-          </button>
         </div>
 
-        {/* ── Coach: Nein-Behandlung (wenn Kunde „Nein" sagt) ──── */}
-        {neinGradient && (
-          <div className="mt-4 rounded-[14px] border border-[#fde0c8] bg-[#fff7ef] p-4">
-            <div className="mb-1.5 flex items-center gap-2">
-              <span className="rounded-full bg-[#fbe2cf] px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.04em] text-[#b25000]">
-                Nein erkannt: {neinTyp}
-              </span>
-              <span className="text-[11px] text-[var(--color-fg-mute)]">
-                {neinGradient.erfolgsquote}
-              </span>
+          {/* RECHTS — kleine Strategie-Spalte */}
+          <aside className="w-[224px] shrink-0 space-y-2.5">
+            <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+              <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                Strategie
+              </div>
+              <div className="text-[12.5px] font-medium text-[var(--color-fg)]">
+                {aiLine ? "KI-Verfeinerung" : KIND_LABEL[move.kind]}
+              </div>
+              {detected && !aiLine && (
+                <div className="mt-0.5 text-[11px] text-[var(--color-fg-mute)]">
+                  erkannt: {detected}
+                </div>
+              )}
+              <button
+                onClick={askAI}
+                disabled={aiBusy}
+                className="mt-2 inline-flex items-center gap-1 rounded-full bg-[var(--color-copper-500)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-60"
+              >
+                <Sparkles className="h-3 w-3" />
+                {aiBusy ? "denkt…" : "KI verfeinern"}
+              </button>
             </div>
-            <p className="text-[14px] font-medium leading-snug text-[#7a4a10]">
-              {neinGradient.behandlung}
-            </p>
-          </div>
-        )}
 
-        {/* ── Coach: Power-Fragen + Ja-Leiter (immer griffbereit) ─ */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {neinGradient && (
+              <div className="rounded-[12px] border border-[#fde0c8] bg-[#fff7ef] p-3">
+                <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#b25000]">
+                  Nein: {neinTyp} · {neinGradient.erfolgsquote}
+                </div>
+                <p className="text-[12px] leading-snug text-[#7a4a10]">
+                  {neinGradient.behandlung}
+                </p>
+              </div>
+            )}
+
+            <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+              <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                Power-Frage → groß
+              </div>
+              <div className="flex flex-col gap-1">
+                {POWER_QUESTIONS.slice(0, 3).map((q) => (
+                  <button
+                    key={q.id}
+                    onClick={() => {
+                      setAiLine(fillTradeHook(q.question, lead.contactName, lead.city));
+                      setDetected(null);
+                    }}
+                    className="rounded-[8px] bg-[var(--color-surface-2)] px-2 py-1.5 text-left text-[11px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
+                  >
+                    {q.question}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        {/* ── Ja-Leiter zum Termin (antippen → groß) ──────────── */}
+        <div className="mt-4">
           <div className="rounded-[14px] border border-[var(--color-hairline)] bg-white p-4">
             <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-mute)]">
-              Power-Fragen (antippen → groß)
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {POWER_QUESTIONS.slice(0, 4).map((q) => (
-                <button
-                  key={q.id}
-                  onClick={() => {
-                    setAiLine(fillTradeHook(q.question, lead.contactName, lead.city));
-                    setDetected(null);
-                  }}
-                  className="rounded-[10px] bg-[var(--color-surface-2)] px-3 py-2 text-left text-[12.5px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
-                >
-                  {q.question}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-[14px] border border-[var(--color-hairline)] bg-white p-4">
-            <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-mute)]">
-              Ja-Leiter zum Termin
+              Ja-Leiter zum Termin · antippen → groß
             </div>
             <ol className="flex flex-col gap-1">
               {MICRO_COMMITMENTS.map((m) => (
