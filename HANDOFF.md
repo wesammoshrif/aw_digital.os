@@ -1,6 +1,6 @@
 # AW Digital OS — Handoff-Bericht
 
-_Übergabe-Dokument für die Weiterentwicklung. Stand: 13.06.2026._
+_Übergabe-Dokument für die Weiterentwicklung. Stand: 14.06.2026._
 
 Alles, was du brauchst, um das Projekt zu übernehmen: Schnellstart, Architektur,
 was läuft, was offen ist, und die Supabase-MCP-Einrichtung.
@@ -146,20 +146,130 @@ Gateway — verifiziert: `api.easybell.de` existiert nicht; `webrtc.easybell.de`
 liefert kein WS-Upgrade). Reale Wege:
 
 1. **`tel:`-Link + Zoiper** auf dem **Trunk** (`voip.easybell.de` + Trunk-Daten) —
-   gratis, funktioniert, Souffleur hört per System-Audio mit. **Montag-Stopgap.**
-2. **Eigene Asterisk-Brücke** (`voip-bridge/`) — baut nach, was Vapi macht:
-   registriert den easybell-Trunk und gibt dem Browser ein WSS-Gateway. **Echtes
-   In-App-Telefonieren, ohne Minutenpreise.** Braucht einen kleinen Linux-VPS
-   (~4 €/Monat oder Oracle Free). Komplette Anleitung in `voip-bridge/README.md`.
-   _Status: gebaut, wartet auf VPS-Deploy (Oracle-Instanz braucht noch eine
-   Public IP)._
+   gratis, funktioniert, Souffleur hört per System-Audio mit.
+2. **Eigene Asterisk-Brücke** — **deployed und aktiv** auf VPS `5.231.248.34`.
+   Registriert die easybell **Cloud-PBX** (nicht den SIP-Trunk!) und gibt dem
+   Browser ein WSS-Gateway via Let's Encrypt TLS (`5-231-248-34.sslip.io`).
+   Details: `voip-bridge/README.md`. Konfiguration live unter `/opt/aw-voip-bridge/`
+   auf dem VPS.
+
+**Asterisk-Status (Stand 14.06.2026):**
+- easybell Cloud-PBX (`CPBX-g36sfsb0-000000@pbx.easybell.de`) → **Registered ✅**
+- SIP-Trunk (`voip.easybell.de`) → 401 abgelehnt (Cloud-PBX ist der richtige Weg)
+- Browser-Registrierung (`cockpit`-Endpoint, WSS) → **funktioniert ✅**
+- Ausgehende Anrufe Browser → Telefon → **funktioniert ✅**
+- Audio browser→Telefon → **funktioniert ✅**
+- Audio Telefon→Browser → **letzter offener Punkt** (Fix deployed, noch nicht
+  final verifiziert — siehe Session-Log unten)
 
 Cockpit-seitig ist alles verdrahtet: `/api/sip/config` bevorzugt die Asterisk-Brücke
 (`ASTERISK_*`-Env), sonst easybell-Fallback.
 
 ---
 
-## 8. Offene Punkte (Richtung Production)
+## 8. Session-Log (14.06.2026) — Was diese Session gemacht hat
+
+### Asterisk VoIP-Brücke — Setup & Deploy
+
+**VPS:** `5.231.248.34` (root / Zugangsdaten separat aufbewahren)
+**Docker-Setup unter** `/opt/aw-voip-bridge/`:
+```
+docker-compose.yml          # andrius/asterisk:latest, ports 8089/5060/10000-10200
+asterisk/pjsip.conf         # Endpunkte: easybell + cockpit (WebRTC)
+asterisk/extensions.conf    # Dialplan: from-internal (ausgehend) + from-easybell (eingehend)
+asterisk/http.conf          # WSS auf Port 8089
+asterisk/rtp.conf           # RTP 10000–10200, STUN google
+certs/fullchain.pem         # Let's Encrypt, auto-renew via /etc/letsencrypt/renewal-hooks/
+certs/privkey.pem
+```
+
+**Wichtige Config-Details:**
+- `timers=no` auf beiden Endpoints (verhindert re-INVITE → `setremotedescriptionfailed` in jssip)
+- `direct_media=no` auf beiden Endpoints
+- `webrtc=yes`, `dtls_auto_generate_cert=yes`, `ice_support=yes`, `bundle=yes`
+- `external_media_address=5.231.248.34` auf **beiden** Transporten (UDP + WSS)
+- Codec: Browser=Opus, easybell=alaw/ulaw — Asterisk transcodiert (codec_opus.so geladen ✓)
+- AOR heißt `[cockpit]` (muss mit dem SIP-Username des Browsers übereinstimmen)
+- Eingehende Anrufe: `Dial(PJSIP/cockpit,30)` — nicht `webrtc` (alter Name, war Bug)
+
+**TLS-Zertifikat:** Let's Encrypt via sslip.io (`5-231-248-34.sslip.io`).
+Zertifikate werden kopiert (nicht gemountet) weil privkey.pem sonst 600/root ist:
+```bash
+cp /etc/letsencrypt/live/5-231-248-34.sslip.io/fullchain.pem /opt/aw-voip-bridge/certs/
+cp /etc/letsencrypt/live/5-231-248-34.sslip.io/privkey.pem /opt/aw-voip-bridge/certs/
+chmod 644 /opt/aw-voip-bridge/certs/*.pem
+cd /opt/aw-voip-bridge && docker compose down && docker compose up -d
+```
+Auto-Renew-Hook: `/etc/letsencrypt/renewal-hooks/deploy/aw-voip-bridge.sh`
+
+**Asterisk neustarten (immer `down + up`, nicht restart — Volumes sonst nicht neu gemountet):**
+```bash
+cd /opt/aw-voip-bridge && docker compose down && docker compose up -d
+# Status prüfen:
+docker exec aw-voip-bridge asterisk -rx 'pjsip show registrations'
+```
+
+---
+
+### Bugfixes im Next.js-App
+
+#### `src/lib/sip/client.ts` — Audio-Fix (Kernproblem dieser Session)
+
+Das Problem: Browser konnte Gesprächspartner nicht hören (audio browser←Telefon fehlte).
+
+**Root cause:** `ev.streams[0]` ist bei Asterisk/WebRTC oft `undefined`. Die alte
+`if (stream)` Bedingung lief nie durch → kein Audio-Element wurde befüllt.
+
+**Fix — Doppelstrategie:**
+1. `peerconnection`-Event + `track`-Event: `ev.streams[0] ?? new MediaStream([ev.track])`
+2. `confirmed`-Event als Fallback: `session.connection.getReceivers()` liest alle
+   empfangenen Tracks direkt aus dem RTCPeerConnection — unabhängig von `track`-Event
+3. `remoteAttached`-Flag verhindert doppeltes Attachment
+4. Volles `[SIP]`-Console-Logging für Debugging
+
+Zum Debuggen im Browser-DevTools → Console folgende Logs beobachten:
+```
+[SIP] audio element created
+[SIP] registered ✓
+[SIP] peerconnection created
+[SIP] track → audio ...          ← Strategie 1
+[SIP] confirmed ✓ / receivers: 1 ← Strategie 2 (Fallback)
+[SIP] attachRemoteAudio — audio tracks: 1
+```
+Wenn `audio tracks: 0` erscheint → Problem liegt auf Asterisk-Seite (Codec).
+
+#### `src/lib/mode.ts` — Hydration-Fix
+
+`isMockMode` wurde auf Client und Server unterschiedlich berechnet (Hydration-Mismatch).
+
+```typescript
+// Neu: NEXT_PUBLIC_DB_CONNECTED hat Vorrang (im Browser auswertbar)
+export const isMockMode =
+  process.env.NEXT_PUBLIC_DB_CONNECTED === "true"
+    ? false
+    : !process.env.DATABASE_URL;
+```
+→ `.env.local` braucht `NEXT_PUBLIC_DB_CONNECTED=true` wenn DATABASE_URL gesetzt ist.
+
+#### `src/components/Shell.tsx` — Hydration-Fix
+
+`streak`-Prop ist jetzt optional mit Default `{current:0, record:0}`. Kein
+`isMockMode`-Import mehr in Shell (der verursachte Server/Client-Mismatch bei
+`"use client"`-Seiten).
+
+#### `src/app/settings/page.tsx` — Integration-Status-Fix
+
+Alle Integrationen zeigten „Einrichten" obwohl Env-Vars gesetzt waren.
+Ersetzt durch `isConnected(key: string)`-Funktion die echte `process.env.*` prüft.
+
+#### `src/components/Souffleur/SipDialer.tsx`
+
+Warning-Banner auf grün geändert: zeigt jetzt „Asterisk-Brücke aktiv" statt
+„kein WSS-Gateway" (weil die Brücke jetzt deployed ist).
+
+---
+
+## 10. Offene Punkte (Richtung Production)
 
 Details + Priorisierung in **`ROADMAP.md`** (volle Lücken-Analyse) und
 **`BERICHT.md`** (Status + Go-Live-Checkliste). Kurzfassung:
@@ -174,7 +284,7 @@ Details + Priorisierung in **`ROADMAP.md`** (volle Lücken-Analyse) und
 
 ---
 
-## 9. Wichtige Befehle
+## 11. Wichtige Befehle
 
 ```bash
 npm run dev            # Dev-Server
@@ -186,14 +296,14 @@ npm run db:seed        # Demo-Daten rein
 npm run db:clear       # alle Daten löschen (production-clean)
 ```
 
-## 10. Dokumente im Repo
+## 12. Dokumente im Repo
 - `HANDOFF.md` — dieses Dokument
 - `ROADMAP.md` — Lücken-Analyse + Sprint-Fortschritt
 - `BERICHT.md` — Status + Go-Live-Checkliste
 - `voip-bridge/README.md` — Asterisk-Brücke deployen
 - `graphify-out/graph.html` — Architektur-Wissensgraph
 
-## 11. Akquise- & Audit-Module (Stand 13.06.2026)
+## 13. Akquise- & Audit-Module (Stand 13.06.2026)
 - **Leads-Finder** (`src/lib/finder/`): Adapter `sources/{osm,googlePlaces,handelsregister,kleinanzeigen,branchenbuch}.ts`, alle → `FinderLead`. `index.ts` merged + entdoppelt. `builderSubdomain.ts` erkennt Gratis-Baukasten (Signal). UI `app/leads/finder/page.tsx` mit Filtern + Quellen-Katalog.
 - **Audit** (`src/lib/audit/`): `website.ts` (Lighthouse via PSI alle 4 Kategorien + Technik-Checks + Hook), `seo.ts` (17 deterministische SEO-Checks, kein KI). UI `app/audits/run/page.tsx`, Onepager `lib/pdf/onepager.ts`.
 - **Skripte**: `scripts/scrape-kleinanzeigen.ts` (Playwright-Offline-Scraper, nur Gewerbe-Impressum).

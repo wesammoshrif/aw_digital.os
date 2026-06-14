@@ -1,5 +1,8 @@
 /**
  * easybell-SIP Browser-Softphone (JsSIP-Wrapper)
+ *
+ * Architektur + VPS-Setup: HANDOFF.md → Abschnitt 8 (Session-Log 14.06.2026)
+ * Asterisk-Config live unter /opt/aw-voip-bridge/ auf 5.231.248.34
  */
 
 type JsSIPUA = {
