@@ -866,6 +866,31 @@ export function SouffleurRoom({
                 ausblenden
               </button>
             </div>
+            {lead.auditHook && (
+              <div className="mb-3 rounded-[10px] bg-white px-3 py-2 ring-1 ring-[#cfe0fd]">
+                <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#0a3977]">
+                  Konkreter Befund — im Gespräch fallenlassen
+                </span>
+                <p className="mt-0.5 text-[13px] font-medium leading-snug text-[var(--color-fg)]">
+                  {lead.auditHook}
+                </p>
+                {(() => {
+                  const ap = lead.auditPayload as {
+                    seo?: { score?: number } | null;
+                    lighthouse?: { seo?: number | null } | null;
+                  } | null;
+                  const parts: string[] = [];
+                  if (ap?.seo?.score != null) parts.push(`SEO-Check ${ap.seo.score}/100`);
+                  if (ap?.lighthouse?.seo != null)
+                    parts.push(`Lighthouse-SEO ${ap.lighthouse.seo}`);
+                  return parts.length ? (
+                    <p className="mt-1 text-[11px] text-[var(--color-fg-mute)]">
+                      {parts.join(" · ")}
+                    </p>
+                  ) : null;
+                })()}
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               {tradeCard && (
                 <div>
