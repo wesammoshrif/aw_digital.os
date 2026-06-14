@@ -88,6 +88,14 @@ export function SouffleurRoom({
   const [dialNumber, setDialNumber] = useState("");
   const [showShareGuide, setShowShareGuide] = useState(false);
   const [showVoicemail, setShowVoicemail] = useState(false);
+  const [briefingOpen, setBriefingOpen] = useState(true);
+  // Berater-Name (einmal setzen, füllt „[Name]" in allen Sätzen → nur ablesen).
+  const [repName, setRepName] = useState("");
+  useEffect(() => {
+    try {
+      setRepName(localStorage.getItem("aw_rep_name") ?? "");
+    } catch {}
+  }, []);
   const testTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micAsCustomerRef = useRef(false);
   useEffect(() => {
@@ -131,10 +139,23 @@ export function SouffleurRoom({
     [tradeCard, lead.contactName, lead.city],
   );
 
-  const hookLine = useMemo(
-    () => fillHook(move.line, lead.auditHook),
-    [move, lead.auditHook],
+  // „[Name]" füllen (Berater-Name) bzw. als klaren Lese-Cue lassen.
+  const fillName = useCallback(
+    (s: string) => s.replace(/\[Name\]/g, repName.trim() || "[Ihr Name]"),
+    [repName],
   );
+
+  const hookLine = useMemo(() => {
+    // Opener an „hat Website / keine Website" anpassen — sonst sagt der Berater
+    // „Ich habe Ihre Website angesehen", obwohl der Betrieb gar keine hat.
+    let base = move.line;
+    if (move.id === "opener") {
+      base = lead.website
+        ? "Guten Tag, hier ist [Name] von AW Digital. Ich habe mir kurz Ihre Website angesehen — {hook} Haben Sie 60 Sekunden?"
+        : "Guten Tag, hier ist [Name] von AW Digital. Ich habe geschaut, wie Ihr Betrieb online zu finden ist — {hook} Haben Sie 60 Sekunden?";
+    }
+    return fillName(fillHook(base, lead.auditHook));
+  }, [move, lead.auditHook, lead.website, fillName]);
 
   // Nein-Gradient aus dem letzten Kunden-Satz (für das Coach-Panel).
   const neinTyp = useMemo(
@@ -816,6 +837,71 @@ export function SouffleurRoom({
 
       {/* ── Was JETZT sagen (groß) + Strategie (klein, Seite) ───── */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
+        {/* PRE-CALL-BRIEFING — was den Berater erwartet, damit er nur abliest */}
+        {briefingOpen ? (
+          <div className="mb-4 rounded-[16px] border border-[#cfe0fd] bg-[#f5f9ff] p-4">
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#0a3977]">
+                Briefing · {lead.trade ?? "Betrieb"}
+                {lead.city ? ` · ${lead.city}` : ""} ·{" "}
+                {lead.website ? "hat Website" : "KEINE WEBSITE = heiß"}
+              </span>
+              <button
+                onClick={() => setBriefingOpen(false)}
+                className="text-[11px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
+              >
+                ausblenden
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {tradeCard && (
+                <div>
+                  <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
+                    Wahrscheinliche Schmerzpunkte
+                  </div>
+                  <ul className="space-y-1">
+                    {tradeCard.painPoints.slice(0, 2).map((p, i) => (
+                      <li
+                        key={i}
+                        className="flex gap-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]"
+                      >
+                        <span className="mt-0.5 text-[var(--color-copper-500)]">▸</span>
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div>
+                <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
+                  Womit er kommt → antippen für die Antwort
+                </div>
+                <div className="flex flex-col gap-1">
+                  {["no_time", "no_interest", lead.website ? "have_website" : "kumpel_macht", "price"]
+                    .map((id) => getMove(id))
+                    .filter((m): m is Move => !!m)
+                    .map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => pickObjection(m.id)}
+                        title={fillHook(m.line, lead.auditHook)}
+                        className="rounded-[8px] bg-white px-2.5 py-1.5 text-left text-[11.5px] font-medium text-[var(--color-fg-dim)] ring-1 ring-black/[0.04] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
+                      >
+                        „{m.label}"
+                      </button>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setBriefingOpen(true)}
+            className="mb-3 text-[11px] font-medium text-[var(--color-copper-600)] hover:underline"
+          >
+            + Briefing einblenden
+          </button>
+        )}
         <div className="flex gap-4">
         <div
           className={cn(
@@ -888,6 +974,17 @@ export function SouffleurRoom({
                 <Sparkles className="h-3 w-3" />
                 {aiBusy ? "denkt…" : "KI verfeinern"}
               </button>
+              <input
+                value={repName}
+                onChange={(e) => {
+                  setRepName(e.target.value);
+                  try {
+                    localStorage.setItem("aw_rep_name", e.target.value);
+                  } catch {}
+                }}
+                placeholder="Dein Name (für den Opener)"
+                className="mt-2 w-full rounded-[6px] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2 py-1 text-[11px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+              />
             </div>
 
             {neinGradient && (
