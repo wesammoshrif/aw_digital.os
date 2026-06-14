@@ -72,6 +72,7 @@ export function SouffleurRoom({
   const [consent, setConsent] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [elapsed, setElapsed] = useState(0);
+  const [callEnded, setCallEnded] = useState(false);
   const [micLevel, setMicLevel] = useState(0);
   const [sysLevel, setSysLevel] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -171,10 +172,12 @@ export function SouffleurRoom({
     : null;
 
   // ── Timer ──────────────────────────────────────────────────────
+  // Friert ein, sobald das (Browser-)Gespräch endet (callEnded).
   useEffect(() => {
+    if (callEnded) return;
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [callEnded]);
 
   // ── Mikro via Deepgram (zuverlässig, gleicher Anbieter wie Kunde) ──
   const startMic = useCallback(async () => {
@@ -595,6 +598,27 @@ export function SouffleurRoom({
     [teardownCustomerPipeline],
   );
 
+  // Browser-Direktanruf: Gesprächsende automatisch erkennen → Souffleur stoppen.
+  // (Beim tel:-Link gibt es im Browser KEIN Signal — dort manuell beenden.)
+  const callWasActiveRef = useRef(false);
+  const handleSipStatus = useCallback(
+    (s: string) => {
+      if (s === "ringing" || s === "in-call") {
+        if (!callWasActiveRef.current) setElapsed(0); // neues Gespräch → Timer frisch
+        callWasActiveRef.current = true;
+        setCallEnded(false);
+      } else if (
+        (s === "ended" || s === "error" || s === "idle") &&
+        callWasActiveRef.current
+      ) {
+        callWasActiveRef.current = false;
+        setCallEnded(true); // Timer einfrieren
+        stopSystem(); // Transkription stoppen
+      }
+    },
+    [stopSystem],
+  );
+
   // ── Gemeinsamer Reset für den Kunden-Kontext ────────────────────
   // Wichtig: leert auch custRef + pending Haiku-Debounce, damit Test-
   // Einwände nicht in den echten Call übergehen (oder umgekehrt).
@@ -739,6 +763,11 @@ export function SouffleurRoom({
             <span className="tabular text-[13px] text-[var(--color-fg-mute)]">
               {mm}:{ss}
             </span>
+            {callEnded && (
+              <span className="rounded-full bg-[#ffeceb] px-2 py-0.5 text-[10.5px] font-medium text-[#d70015]">
+                beendet
+              </span>
+            )}
           </div>
           {lead.phone && (
             <div className="tabular text-[12px] text-[var(--color-fg-mute)]">
@@ -1258,6 +1287,7 @@ export function SouffleurRoom({
             defaultNumber={lead.phone ?? ""}
             autoDial={autoDial}
             onRemoteStream={(stream) => handleSipRemoteStream(stream)}
+            onStatus={handleSipStatus}
           />
         </div>
 
