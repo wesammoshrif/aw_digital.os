@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   // ── Bevorzugt: eigene Asterisk-Brücke (echtes In-Browser-Telefonieren) ──

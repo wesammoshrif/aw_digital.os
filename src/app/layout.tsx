@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/lib/auth/session";
 import "./globals.css";
 
 /* Inter = the web fallback that most closely matches SF Pro metrics.
@@ -21,11 +24,22 @@ export const metadata: Metadata = {
   description: "Akquise-Cockpit für Handwerksbetriebe",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const path = (await headers()).get("x-pathname") ?? "";
+  const isAuthPage =
+    path === "/login" || path === "/signup" || path === "/pending";
+
+  // Nicht-eingeloggt regelt die Middleware (→ /login). Hier nur das
+  // Pending-Gate: wer noch nicht freigegeben ist, sieht den Warte-Screen.
+  if (!isAuthPage) {
+    const user = await getSessionUser();
+    if (user && !user.approved) redirect("/pending");
+  }
+
   return (
     <html lang="de" className={`${inter.variable} ${geistMono.variable}`}>
       <body className="min-h-screen bg-[var(--color-canvas)] text-[var(--color-fg)] antialiased">

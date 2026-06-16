@@ -29,7 +29,7 @@ function websiteLessHook(
 }
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   try {

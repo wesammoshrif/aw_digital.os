@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const key = process.env.DEEPGRAM_API_KEY;

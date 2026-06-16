@@ -25,7 +25,7 @@ const DISPO_VALUES = [
 type Dispo = (typeof DISPO_VALUES)[number];
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const parsed = await parseJson(req, callCreateSchema);

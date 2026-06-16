@@ -15,7 +15,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const { id } = await params;

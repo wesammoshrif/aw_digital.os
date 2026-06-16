@@ -11,7 +11,7 @@ import { finderSchema } from "@/lib/validation";
  * Reine Suche — schreibt NICHTS. Übernahme läuft über /api/finder/import.
  */
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const parsed = await parseJson(req, finderSchema);

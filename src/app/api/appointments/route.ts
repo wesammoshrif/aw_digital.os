@@ -12,7 +12,7 @@ import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { appointmentSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const parsed = await parseJson(req, appointmentSchema);

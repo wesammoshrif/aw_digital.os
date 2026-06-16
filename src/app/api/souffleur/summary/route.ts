@@ -14,7 +14,7 @@ const SYSTEM =
   "Du fasst ein Verkaufs-Telefonat für die Akquise-CRM eines Webdesigners zusammen. Antworte NUR als valides JSON.";
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const key = process.env.ANTHROPIC_API_KEY;

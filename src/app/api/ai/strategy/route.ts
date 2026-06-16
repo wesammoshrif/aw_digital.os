@@ -4,7 +4,7 @@ import { dashboardSummary } from "@/lib/store";
 import { requireAuth } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const key = process.env.ANTHROPIC_API_KEY;

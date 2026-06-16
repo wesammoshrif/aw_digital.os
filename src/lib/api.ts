@@ -4,24 +4,14 @@
  * Zod-Eingabevalidierung.
  *
  * Nutzung in jedem daten-führenden Handler:
- *   const denied = requireAuth(req);
+ *   const denied = await requireAuth(req);
  *   if (denied) return denied;
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import type { ZodType } from "zod";
-import { verifyBasicAuth } from "./auth";
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-
-function unauthorized(): NextResponse {
-  return new NextResponse("Anmeldung erforderlich.", {
-    status: 401,
-    headers: {
-      "WWW-Authenticate": 'Basic realm="AW Digital OS", charset="UTF-8"',
-    },
-  });
-}
 
 /**
  * Blockt zustandsändernde Cross-Origin-Requests (Origin-Host != Request-Host).
@@ -44,32 +34,24 @@ export function assertSameOrigin(req: NextRequest): NextResponse | null {
 }
 
 /**
- * Zweite Verteidigungslinie hinter der Middleware. Prüft Basic-Auth erneut
- * direkt im Handler (falls die Middleware umgangen/fehlkonfiguriert ist) und
+ * Auth-Gate für Route-Handler (Defense-in-Depth hinter der Middleware).
+ * Prüft die Supabase-Session serverseitig (getUser, nicht getSession) und
  * setzt den Same-Origin-Schutz für mutierende Methoden durch.
  *
  * Rückgabe: NextResponse (= abgelehnt, direkt zurückgeben) oder null (= ok).
  */
-export function requireAuth(req: NextRequest): NextResponse | null {
-  const password = process.env.APP_PASSWORD;
-
-  // Fail-closed: in Production MUSS ein Passwort gesetzt sein.
-  if (!password) {
-    if (process.env.NODE_ENV === "production") {
-      return new NextResponse("Server misconfiguration: APP_PASSWORD missing.", {
-        status: 503,
-      });
-    }
-    return null; // lokale Entwicklung: offen
+export async function requireAuth(req: NextRequest): Promise<NextResponse | null> {
+  const { createSupabaseServer } = await import("@/lib/supabase/server");
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json(
+      { ok: false, error: "Nicht angemeldet." },
+      { status: 401 },
+    );
   }
-
-  const expectedUser = process.env.APP_USER || "aw";
-  if (
-    !verifyBasicAuth(req.headers.get("authorization"), expectedUser, password)
-  ) {
-    return unauthorized();
-  }
-
   return assertSameOrigin(req);
 }
 

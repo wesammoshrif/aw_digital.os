@@ -31,13 +31,13 @@ ${GOLDEN_RULES.map((r) => `- ${r}`).join("\n")}`;
 
 // GET: Verfügbarkeits-Check für den Readiness-Chip
 export async function GET(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
   return NextResponse.json({ ok: !!process.env.ANTHROPIC_API_KEY });
 }
 
 export async function POST(req: NextRequest) {
-  const denied = requireAuth(req);
+  const denied = await requireAuth(req);
   if (denied) return denied;
 
   const key = process.env.ANTHROPIC_API_KEY;
