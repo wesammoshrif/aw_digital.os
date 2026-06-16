@@ -41,15 +41,20 @@ export function assertSameOrigin(req: NextRequest): NextResponse | null {
  * Rückgabe: NextResponse (= abgelehnt, direkt zurückgeben) oder null (= ok).
  */
 export async function requireAuth(req: NextRequest): Promise<NextResponse | null> {
-  const { createSupabaseServer } = await import("@/lib/supabase/server");
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { getSessionUser } = await import("@/lib/auth/session");
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json(
       { ok: false, error: "Nicht angemeldet." },
       { status: 401 },
+    );
+  }
+  // Freigabe-Gate (Defense-in-Depth): pending oder gesperrt (approved=false)
+  // darf KEINE Daten-/Aktions-Route erreichen — nicht nur die Seiten (Layout).
+  if (!user.approved || user.role === "pending") {
+    return NextResponse.json(
+      { ok: false, error: "Konto nicht freigegeben." },
+      { status: 403 },
     );
   }
   return assertSameOrigin(req);
