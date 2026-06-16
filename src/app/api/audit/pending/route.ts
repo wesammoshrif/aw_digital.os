@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runAudit } from "@/lib/audit/website";
 import { getTradeCard, fillTradeHook } from "@/lib/souffleur/tradePlaybook";
 import { isMockMode } from "@/lib/mode";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError } from "@/lib/api";
 
 /** Hook für Leads OHNE Website — das stärkste Kaufsignal. */
@@ -33,7 +33,8 @@ export async function POST(req: NextRequest) {
   if (denied) return denied;
 
   try {
-    const ownerId = OWNER_ID;
+    const user = (await getSessionUser())!;
+    const ownerId = user.id;
 
     // Body ist optional — leerer/ungültiger Body darf nicht crashen.
     let limit = 5;

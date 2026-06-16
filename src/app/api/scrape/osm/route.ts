@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { scrapeTrade, TRADE_MAP, type OsmLeadRaw } from "@/lib/scrapers/osm";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { isNull, and, eq } from "drizzle-orm";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { scrapeOsmSchema } from "@/lib/validation";
@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
   if (parsed.response) return parsed.response;
   const city = parsed.data.city ?? "Hannover";
   const trades = parsed.data.trades ?? ["dachdecker", "maler", "elektriker"];
-  const ownerId = OWNER_ID;
+  const user = (await getSessionUser())!;
+  const ownerId = user.id;
 
   // ── Mock-Modus: nur scrapen, kein Persist ─────────────────────────
   if (!process.env.DATABASE_URL) {

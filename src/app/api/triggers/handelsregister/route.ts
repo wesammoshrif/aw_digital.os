@@ -7,15 +7,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAllNeugruendungen } from "@/lib/scrapers/handelsregister";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { and, eq } from "drizzle-orm";
 import { requireAuth, serverError } from "@/lib/api";
 
 export async function GET(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
-  const ownerId = OWNER_ID;
+  const ownerId = user.id;
 
   try {
     const events = await fetchAllNeugruendungen();

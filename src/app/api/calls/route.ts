@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { callCreateSchema } from "@/lib/validation";
 
@@ -27,6 +27,7 @@ type Dispo = (typeof DISPO_VALUES)[number];
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const parsed = await parseJson(req, callCreateSchema);
   if (parsed.response) return parsed.response;
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
         : undefined;
 
     await db.insert(calls).values({
-      ownerId: OWNER_ID,
+      ownerId: user.id,
       leadId: body.leadId.trim(),
       ...(dispo ? { dispo } : {}),
       durationSec: body.durationSec ?? null,

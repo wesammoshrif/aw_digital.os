@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { audits, leads } from "@/db/schema";
 import { runAudit } from "@/lib/audit/website";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { eq, and } from "drizzle-orm";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { auditSchema } from "@/lib/validation";
@@ -19,6 +19,7 @@ import { auditSchema } from "@/lib/validation";
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const parsed = await parseJson(req, auditSchema);
   if (parsed.response) return parsed.response;
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
     const [stored] = await db
       .insert(audits)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: user.id,
         leadId: body.leadId ?? null,
         websiteUrl: result.websiteUrl,
         mobileScore: result.mobileScore,
@@ -78,7 +79,11 @@ export async function POST(req: NextRequest) {
           auditPayload: result as unknown as Record<string, unknown>,
           updatedAt: new Date(),
         })
-        .where(and(eq(leads.id, body.leadId), eq(leads.ownerId, OWNER_ID)));
+        .where(
+          user.role === "admin"
+            ? eq(leads.id, body.leadId)
+            : and(eq(leads.id, body.leadId), eq(leads.ownerId, user.id)),
+        );
     }
 
     return NextResponse.json({ ok: true, audit: stored, result });

@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, serverError } from "@/lib/api";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 
 export async function GET(
   req: NextRequest,
@@ -14,6 +14,7 @@ export async function GET(
 ) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const { id } = await params;
 
@@ -33,7 +34,11 @@ export async function GET(
     const [lead] = await db
       .select()
       .from(leads)
-      .where(and(eq(leads.id, id), eq(leads.ownerId, OWNER_ID)))
+      .where(
+        user.role === "admin"
+          ? eq(leads.id, id)
+          : and(eq(leads.id, id), eq(leads.ownerId, user.id)),
+      )
       .limit(1);
 
     if (!lead) {

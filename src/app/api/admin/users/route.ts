@@ -42,19 +42,30 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const patch =
-    action === "approve"
-      ? { role: "agent" as const, approved: true }
-      : action === "makeAdmin"
-        ? { role: "admin" as const, approved: true }
-        : action === "makeAgent"
-          ? { role: "agent" as const, approved: true }
-          : { approved: false }; // deactivate
-
   try {
     const { profiles } = await import("@/db/schema");
     const { eq } = await import("drizzle-orm");
     await withRls(me, async (tx) => {
+      let patch: { role?: "admin" | "agent"; approved: boolean };
+      if (action === "approve") {
+        // Freigeben/Reaktivieren: pending → agent, vorhandene Rolle
+        // (Admin/Agent) bleibt erhalten — kein stilles Degradieren.
+        const [cur] = await tx
+          .select({ role: profiles.role })
+          .from(profiles)
+          .where(eq(profiles.id, id))
+          .limit(1);
+        patch = {
+          role: cur && cur.role !== "pending" ? cur.role : "agent",
+          approved: true,
+        };
+      } else if (action === "makeAdmin") {
+        patch = { role: "admin", approved: true };
+      } else if (action === "makeAgent") {
+        patch = { role: "agent", approved: true };
+      } else {
+        patch = { approved: false }; // deactivate
+      }
       await tx
         .update(profiles)
         .set({ ...patch, updatedAt: new Date() })

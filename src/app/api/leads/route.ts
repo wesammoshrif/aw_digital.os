@@ -4,13 +4,14 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { leadCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const parsed = await parseJson(req, leadCreateSchema);
   if (parsed.response) return parsed.response;
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(leads)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: user.id,
         company: body.company.trim(),
         trade: body.trade?.trim() || null,
         city: body.city?.trim() || null,

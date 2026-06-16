@@ -10,7 +10,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { OWNER_ID } from "@/lib/utils";
 import { isMockMode } from "@/lib/mode";
 import { sendEmail } from "@/lib/email";
 import { listAppointments, listInvoices, nowAnchor } from "@/lib/store";
@@ -79,12 +78,12 @@ async function handle(req: NextRequest) {
       const { appointments, leads } = await import("@/db/schema");
       const { eq, and, lte, isNull } = await import("drizzle-orm");
 
+      // System-Job (kein eingeloggter User) → über ALLE Owner, via Superuser-db.
       const due = await db
         .select()
         .from(appointments)
         .where(
           and(
-            eq(appointments.ownerId, OWNER_ID),
             eq(appointments.status, "scheduled"),
             isNull(appointments.reminderSentAt),
             lte(appointments.reminderAt, now),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { activitySchema } from "@/lib/validation";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 
 const ACTIVITY_TYPES = [
   "call",
@@ -26,6 +26,7 @@ export async function POST(
 ) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const { id: leadId } = await params;
   const parsed = await parseJson(req, activitySchema);
@@ -55,7 +56,7 @@ export async function POST(
     const [newActivity] = await db
       .insert(activities)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: user.id,
         leadId,
         type: body.type as never,
         title: body.title,

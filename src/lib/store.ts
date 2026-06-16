@@ -1,13 +1,11 @@
 /**
- * Data-Access-Layer mit transparentem Fallback.
+ * Data-Access-Layer — RLS-gescopt pro eingeloggtem Nutzer.
  *
- * Wenn `DATABASE_URL` gesetzt ist → echte Drizzle-Queries.
- * Sonst → Mock-Daten aus `lib/mock/data.ts`.
- *
- * Die Pages müssen nichts wissen.
+ * Lese-/Schreibpfade laufen über withRls(user): die RLS-Policies sorgen dafür,
+ * dass ein Agent nur seine eigenen Daten (owner_id = auth.uid()) sieht und ein
+ * Admin alle. Kein hartkodiertes OWNER_ID mehr. Ohne DATABASE_URL → Mock-Daten.
  */
 
-import { OWNER_ID } from "./utils";
 import {
   mockLeads,
   mockActivities,
@@ -18,34 +16,46 @@ import {
   mockInvoices,
   mockTasks,
   mockCalls,
-  pipelineStats,
   callsThisWeek,
   STREAK,
 } from "./mock/data";
 
 export { isMockMode } from "./mode";
 import { isMockMode } from "./mode";
+import { getSessionUser, type SessionUser } from "@/lib/auth/session";
+import { withRls, type RlsTx } from "@/lib/db/rls";
 
-// Gültige UUID? Schützt DB-Queries vor Postgres-Cast-500 bei Nicht-UUID-IDs
-// (z.B. alte Mock-Links „prj-…") → liefert sauber null → notFound()/404.
+// Gültige UUID? Schützt DB-Queries vor Postgres-Cast-500 bei Nicht-UUID-IDs.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Führt eine Query RLS-gescopt als der eingeloggte Nutzer aus.
+ * Kein Login (sollte hinter der Middleware nie passieren) → fallback.
+ */
+async function scoped<T>(
+  fallback: T,
+  fn: (tx: RlsTx, user: SessionUser) => Promise<T>,
+): Promise<T> {
+  const user = await getSessionUser();
+  if (!user) return fallback;
+  return withRls(user, (tx) => fn(tx, user));
+}
 
 export async function listProjects() {
   if (isMockMode) return mockProjects;
-  const { db } = await import("@/db");
-  const { projects } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  return db.select().from(projects).where(eq(projects.ownerId, OWNER_ID));
+  return scoped([] as typeof mockProjects, async (tx) => {
+    const { projects } = await import("@/db/schema");
+    return tx.select().from(projects) as never;
+  });
 }
 
 export async function listInvoices() {
   if (isMockMode) return mockInvoices;
-  const { db } = await import("@/db");
-  const { invoices } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  return db.select().from(invoices).where(eq(invoices.ownerId, OWNER_ID));
+  return scoped([] as typeof mockInvoices, async (tx) => {
+    const { invoices } = await import("@/db/schema");
+    return tx.select().from(invoices) as never;
+  });
 }
 
 // Angebote (kind = "quote") und Rechnungen (kind = "invoice") getrennt.
@@ -61,29 +71,27 @@ export async function listRechnungen() {
 
 export async function getProjectByLeadId(leadId: string) {
   if (isMockMode) return mockProjects.find((p) => p.leadId === leadId) ?? null;
-  const { db } = await import("@/db");
-  const { projects } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
-  const [row] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.leadId, leadId), eq(projects.ownerId, OWNER_ID)))
-    .limit(1);
-  return row ?? null;
+  return scoped(null as (typeof mockProjects)[number] | null, async (tx) => {
+    const { projects } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await tx
+      .select()
+      .from(projects)
+      .where(eq(projects.leadId, leadId))
+      .limit(1);
+    return (row as never) ?? null;
+  });
 }
 
 export async function getProject(id: string) {
   if (isMockMode) return mockProjects.find((p) => p.id === id) ?? null;
   if (!UUID_RE.test(id)) return null;
-  const { db } = await import("@/db");
-  const { projects } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
-  const [row] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, id), eq(projects.ownerId, OWNER_ID)))
-    .limit(1);
-  return row ?? null;
+  return scoped(null as (typeof mockProjects)[number] | null, async (tx) => {
+    const { projects } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await tx.select().from(projects).where(eq(projects.id, id)).limit(1);
+    return (row as never) ?? null;
+  });
 }
 
 export async function createProject(input: {
@@ -92,25 +100,25 @@ export async function createProject(input: {
   status?: string;
   description?: string;
 }): Promise<{ id: string } | null> {
-  // Im Mock-Modus existiert keine DB → kein Insert möglich.
   if (isMockMode) return null;
-  try {
-    const { db } = await import("@/db");
-    const { projects } = await import("@/db/schema");
-    const [row] = await db
-      .insert(projects)
-      .values({
-        ownerId: OWNER_ID,
-        leadId: input.leadId,
-        name: input.name,
-        status: (input.status ?? "planning") as never,
-        description: input.description ?? null,
-      })
-      .returning({ id: projects.id });
-    return row ? { id: row.id } : null;
-  } catch {
-    return null;
-  }
+  return scoped(null as { id: string } | null, async (tx, user) => {
+    try {
+      const { projects } = await import("@/db/schema");
+      const [row] = await tx
+        .insert(projects)
+        .values({
+          ownerId: user.id,
+          leadId: input.leadId,
+          name: input.name,
+          status: (input.status ?? "planning") as never,
+          description: input.description ?? null,
+        })
+        .returning({ id: projects.id });
+      return row ? { id: row.id } : null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function createAppointment(input: {
@@ -120,28 +128,28 @@ export async function createAppointment(input: {
   reminderAt?: Date;
 }): Promise<{ id: string } | null> {
   if (isMockMode) return null;
-  try {
-    const { db } = await import("@/db");
-    const { appointments } = await import("@/db/schema");
-    // Erinnerung standardmäßig 24h vor dem Termin.
-    const reminderAt =
-      input.reminderAt ??
-      new Date(input.startsAt.getTime() - 24 * 60 * 60 * 1000);
-    const [row] = await db
-      .insert(appointments)
-      .values({
-        ownerId: OWNER_ID,
-        leadId: input.leadId,
-        startsAt: input.startsAt,
-        title: input.title ?? "Telefon-Termin",
-        status: "scheduled",
-        reminderAt,
-      })
-      .returning({ id: appointments.id });
-    return row ? { id: row.id } : null;
-  } catch {
-    return null;
-  }
+  return scoped(null as { id: string } | null, async (tx, user) => {
+    try {
+      const { appointments } = await import("@/db/schema");
+      const reminderAt =
+        input.reminderAt ??
+        new Date(input.startsAt.getTime() - 24 * 60 * 60 * 1000);
+      const [row] = await tx
+        .insert(appointments)
+        .values({
+          ownerId: user.id,
+          leadId: input.leadId,
+          startsAt: input.startsAt,
+          title: input.title ?? "Telefon-Termin",
+          status: "scheduled",
+          reminderAt,
+        })
+        .returning({ id: appointments.id });
+      return row ? { id: row.id } : null;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function listTasks(projectId: string) {
@@ -149,14 +157,15 @@ export async function listTasks(projectId: string) {
     return mockTasks
       .filter((t) => t.projectId === projectId)
       .sort((a, b) => (a.dueDate?.getTime() ?? 0) - (b.dueDate?.getTime() ?? 0));
-  const { db } = await import("@/db");
-  const { tasks } = await import("@/db/schema");
-  const { eq, asc } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(tasks)
-    .where(eq(tasks.projectId, projectId))
-    .orderBy(asc(tasks.dueDate));
+  return scoped([] as typeof mockTasks, async (tx) => {
+    const { tasks } = await import("@/db/schema");
+    const { eq, asc } = await import("drizzle-orm");
+    return tx
+      .select()
+      .from(tasks)
+      .where(eq(tasks.projectId, projectId))
+      .orderBy(asc(tasks.dueDate)) as never;
+  });
 }
 
 // ── Anrufe & Statistik ───────────────────────────────────────────
@@ -165,14 +174,11 @@ export async function listCalls() {
     return [...mockCalls].sort(
       (a, b) => b.startedAt.getTime() - a.startedAt.getTime(),
     );
-  const { db } = await import("@/db");
-  const { calls } = await import("@/db/schema");
-  const { eq, desc } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(calls)
-    .where(eq(calls.ownerId, OWNER_ID))
-    .orderBy(desc(calls.startedAt));
+  return scoped([] as typeof mockCalls, async (tx) => {
+    const { calls } = await import("@/db/schema");
+    const { desc } = await import("drizzle-orm");
+    return tx.select().from(calls).orderBy(desc(calls.startedAt)) as never;
+  });
 }
 
 export async function callStats() {
@@ -187,25 +193,21 @@ export async function callStats() {
   return { total, connected, connectRate, appointments, interested, avgDuration };
 }
 
-// Streak (current/record) für die Sidebar — Mock-Konstante bzw. settings.
+// Streak (current/record) für die Sidebar — eigene settings-Zeile des Nutzers.
 export async function getStreak(): Promise<{ current: number; record: number }> {
   if (isMockMode) return { current: STREAK.current, record: STREAK.record };
-  try {
-    const { db } = await import("@/db");
-    const { settings } = await import("@/db/schema");
-    const { eq } = await import("drizzle-orm");
-    const [s] = await db
-      .select()
-      .from(settings)
-      .where(eq(settings.ownerId, OWNER_ID))
-      .limit(1);
-    return { current: s?.streakDays ?? 0, record: s?.streakRecord ?? 0 };
-  } catch {
-    return { current: 0, record: 0 };
-  }
+  return scoped({ current: 0, record: 0 }, async (tx) => {
+    try {
+      const { settings } = await import("@/db/schema");
+      const [s] = await tx.select().from(settings).limit(1);
+      return { current: s?.streakDays ?? 0, record: s?.streakRecord ?? 0 };
+    } catch {
+      return { current: 0, record: 0 };
+    }
+  });
 }
 
-// Anrufe pro Tag der letzten 7 Tage (für die Wochen-Sparkline) — echte Daten.
+// Anrufe pro Tag der letzten 7 Tage (für die Wochen-Sparkline).
 async function weeklyCallsDb(anchor: Date): Promise<number[]> {
   const calls = await listCalls();
   const days: number[] = [];
@@ -222,7 +224,6 @@ async function weeklyCallsDb(anchor: Date): Promise<number[]> {
   return days;
 }
 
-
 // ── Leads ────────────────────────────────────────────────────────
 
 export async function listLeads(opts?: {
@@ -232,37 +233,31 @@ export async function listLeads(opts?: {
   if (isMockMode) {
     let rows = [...mockLeads];
     if (opts?.status) rows = rows.filter((l) => l.status === opts.status);
-    // Heißeste zuerst (niedriger painScore = mehr Verkaufs-Hebel), null ans Ende.
     rows.sort((a, b) => (a.painScore ?? 101) - (b.painScore ?? 101));
     return rows.slice(0, opts?.limit ?? 200);
   }
-  const { db } = await import("@/db");
-  const { leads } = await import("@/db/schema");
-  const { eq, and, asc, desc } = await import("drizzle-orm");
-  const where = opts?.status
-    ? and(eq(leads.ownerId, OWNER_ID), eq(leads.status, opts.status as never))
-    : eq(leads.ownerId, OWNER_ID);
-  // painScore ASC → Postgres sortiert NULL ans Ende (unaudierte zuletzt).
-  return db
-    .select()
-    .from(leads)
-    .where(where)
-    .orderBy(asc(leads.painScore), desc(leads.createdAt))
-    .limit(opts?.limit ?? 200) as never;
+  return scoped([] as unknown as typeof mockLeads, async (tx) => {
+    const { leads } = await import("@/db/schema");
+    const { eq, asc, desc } = await import("drizzle-orm");
+    const base = tx.select().from(leads);
+    const q = opts?.status
+      ? base.where(eq(leads.status, opts.status as never))
+      : base;
+    return q
+      .orderBy(asc(leads.painScore), desc(leads.createdAt))
+      .limit(opts?.limit ?? 200) as never;
+  });
 }
 
 export async function getLead(id: string) {
   if (isMockMode) return mockLeads.find((l) => l.id === id) ?? null;
   if (!UUID_RE.test(id)) return null;
-  const { db } = await import("@/db");
-  const { leads } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
-  const [row] = await db
-    .select()
-    .from(leads)
-    .where(and(eq(leads.id, id), eq(leads.ownerId, OWNER_ID)))
-    .limit(1);
-  return row ?? null;
+  return scoped(null as (typeof mockLeads)[number] | null, async (tx) => {
+    const { leads } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await tx.select().from(leads).where(eq(leads.id, id)).limit(1);
+    return (row as never) ?? null;
+  });
 }
 
 export async function listActivitiesForLead(leadId: string) {
@@ -270,14 +265,15 @@ export async function listActivitiesForLead(leadId: string) {
     return mockActivities
       .filter((a) => a.leadId === leadId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  const { db } = await import("@/db");
-  const { activities } = await import("@/db/schema");
-  const { eq, desc } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(activities)
-    .where(eq(activities.leadId, leadId))
-    .orderBy(desc(activities.createdAt));
+  return scoped([] as typeof mockActivities, async (tx) => {
+    const { activities } = await import("@/db/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    return tx
+      .select()
+      .from(activities)
+      .where(eq(activities.leadId, leadId))
+      .orderBy(desc(activities.createdAt)) as never;
+  });
 }
 
 export async function listTriggers() {
@@ -285,14 +281,14 @@ export async function listTriggers() {
     return mockTriggers.sort(
       (a, b) => b.occurredAt.getTime() - a.occurredAt.getTime(),
     );
-  const { db } = await import("@/db");
-  const { triggerEvents } = await import("@/db/schema");
-  const { eq, desc } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(triggerEvents)
-    .where(eq(triggerEvents.ownerId, OWNER_ID))
-    .orderBy(desc(triggerEvents.occurredAt));
+  return scoped([] as typeof mockTriggers, async (tx) => {
+    const { triggerEvents } = await import("@/db/schema");
+    const { desc } = await import("drizzle-orm");
+    return tx
+      .select()
+      .from(triggerEvents)
+      .orderBy(desc(triggerEvents.occurredAt)) as never;
+  });
 }
 
 export async function listAudits() {
@@ -300,28 +296,22 @@ export async function listAudits() {
     return mockAudits.sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
     );
-  const { db } = await import("@/db");
-  const { audits } = await import("@/db/schema");
-  const { eq, desc } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(audits)
-    .where(eq(audits.ownerId, OWNER_ID))
-    .orderBy(desc(audits.createdAt));
+  return scoped([] as typeof mockAudits, async (tx) => {
+    const { audits } = await import("@/db/schema");
+    const { desc } = await import("drizzle-orm");
+    return tx.select().from(audits).orderBy(desc(audits.createdAt)) as never;
+  });
 }
 
 export async function getAudit(id: string) {
   if (isMockMode) return mockAudits.find((a) => a.id === id) ?? null;
   if (!UUID_RE.test(id)) return null;
-  const { db } = await import("@/db");
-  const { audits } = await import("@/db/schema");
-  const { eq, and } = await import("drizzle-orm");
-  const [row] = await db
-    .select()
-    .from(audits)
-    .where(and(eq(audits.id, id), eq(audits.ownerId, OWNER_ID)))
-    .limit(1);
-  return row ?? null;
+  return scoped(null as (typeof mockAudits)[number] | null, async (tx) => {
+    const { audits } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [row] = await tx.select().from(audits).where(eq(audits.id, id)).limit(1);
+    return (row as never) ?? null;
+  });
 }
 
 export async function getLatestAuditForLead(leadId: string) {
@@ -331,27 +321,25 @@ export async function getLatestAuditForLead(leadId: string) {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     return rows[0] ?? null;
   }
-  const { db } = await import("@/db");
-  const { audits } = await import("@/db/schema");
-  const { eq, and, desc } = await import("drizzle-orm");
-  const [row] = await db
-    .select()
-    .from(audits)
-    .where(and(eq(audits.leadId, leadId), eq(audits.ownerId, OWNER_ID)))
-    .orderBy(desc(audits.createdAt))
-    .limit(1);
-  return row ?? null;
+  return scoped(null as (typeof mockAudits)[number] | null, async (tx) => {
+    const { audits } = await import("@/db/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    const [row] = await tx
+      .select()
+      .from(audits)
+      .where(eq(audits.leadId, leadId))
+      .orderBy(desc(audits.createdAt))
+      .limit(1);
+    return (row as never) ?? null;
+  });
 }
 
 export async function listAppointments() {
   if (isMockMode) return mockAppointments;
-  const { db } = await import("@/db");
-  const { appointments } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  return db
-    .select()
-    .from(appointments)
-    .where(eq(appointments.ownerId, OWNER_ID));
+  return scoped([] as typeof mockAppointments, async (tx) => {
+    const { appointments } = await import("@/db/schema");
+    return tx.select().from(appointments) as never;
+  });
 }
 
 // Termine inkl. zugehörigem Lead (Firma/Telefon) — für die Termin-Seite.
@@ -383,7 +371,6 @@ export function nowAnchor() {
 export async function dashboardSummary() {
   const all = await listLeads({ limit: 500 });
   const now = nowAnchor();
-  // Status "new" ohne nextStepAt = sofort fällig (frisch gescrapte Leads)
   const dueToday = all
     .filter(
       (l) =>
@@ -400,7 +387,6 @@ export async function dashboardSummary() {
     .filter((l) => l.status === "won")
     .reduce((sum, l) => sum + parseFloat(l.maintenance ?? "0"), 0);
 
-  // Pipeline-Buckets immer aus den geladenen Leads, nicht aus Mock-Konstanten.
   const STAGES = ["new", "contacted", "reached", "audit_sent", "proposal", "won", "frozen"] as const;
   const pipeline: Record<string, { count: number; value: number }> = {};
   for (const status of STAGES) {
@@ -414,7 +400,6 @@ export async function dashboardSummary() {
     };
   }
 
-  // Termine: aus listAppointments rechnen (nicht hartcoden).
   const appts = await listAppointments();
   const upcoming = appts
     .filter(
@@ -444,32 +429,21 @@ export async function dashboardSummary() {
 
   const stats = await callStats();
 
-  // Streak: im Mock aus Konstanten, im DB-Modus aus settings (mit Lesefehler-Fallback).
-  let streak = STREAK;
+  // Streak: im Mock aus Konstanten, sonst aus der eigenen settings-Zeile.
+  let streak = {
+    current: STREAK.current,
+    record: STREAK.record,
+    todayProgress: STREAK.todayProgress ?? 0,
+    todayTarget: STREAK.todayTarget ?? 25,
+  };
   if (!isMockMode) {
-    try {
-      const { db } = await import("@/db");
-      const { settings } = await import("@/db/schema");
-      const { eq } = await import("drizzle-orm");
-      const [s] = await db
-        .select()
-        .from(settings)
-        .where(eq(settings.ownerId, OWNER_ID))
-        .limit(1);
-      const todayStr = now.toISOString().slice(0, 10);
-      const callsToday = await listCalls();
-      const todayProgress = callsToday.filter(
-        (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === todayStr,
-      ).length;
-      streak = {
-        current: s?.streakDays ?? 0,
-        record: s?.streakRecord ?? 0,
-        todayProgress,
-        todayTarget: 25,
-      };
-    } catch {
-      streak = { current: 0, record: 0, todayProgress: 0, todayTarget: 25 };
-    }
+    const s = await getStreak();
+    const todayStr = now.toISOString().slice(0, 10);
+    const callsToday = await listCalls();
+    const todayProgress = callsToday.filter(
+      (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === todayStr,
+    ).length;
+    streak = { current: s.current, record: s.record, todayProgress, todayTarget: 25 };
   }
 
   return {

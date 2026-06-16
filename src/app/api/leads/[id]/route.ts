@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { leadPatchSchema } from "@/lib/validation";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 
 export async function PATCH(
   req: NextRequest,
@@ -22,6 +22,7 @@ export async function PATCH(
   const denied = await requireAuth(req);
   if (denied) return denied;
 
+  const user = (await getSessionUser())!;
   const { id } = await params;
   const parsed = await parseJson(req, leadPatchSchema);
   if (parsed.response) return parsed.response;
@@ -36,7 +37,11 @@ export async function PATCH(
     const { db } = await import("@/db");
     const { leads } = await import("@/db/schema");
     const { eq, and } = await import("drizzle-orm");
-    const scope = and(eq(leads.id, id), eq(leads.ownerId, OWNER_ID));
+    // Admin darf jeden Lead, Agent nur seine eigenen (IDOR-Schutz).
+    const scope =
+      user.role === "admin"
+        ? eq(leads.id, id)
+        : and(eq(leads.id, id), eq(leads.ownerId, user.id));
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (body.status) patch.status = body.status;
@@ -96,6 +101,7 @@ export async function DELETE(
   const denied = await requireAuth(req);
   if (denied) return denied;
 
+  const user = (await getSessionUser())!;
   const { id } = await params;
 
   if (!process.env.DATABASE_URL) {
@@ -109,7 +115,11 @@ export async function DELETE(
 
     const deleted = await db
       .delete(leads)
-      .where(and(eq(leads.id, id), eq(leads.ownerId, OWNER_ID)))
+      .where(
+        user.role === "admin"
+          ? eq(leads.id, id)
+          : and(eq(leads.id, id), eq(leads.ownerId, user.id)),
+      )
       .returning({ id: leads.id });
 
     if (deleted.length === 0) {

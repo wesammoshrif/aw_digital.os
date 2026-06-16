@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export type Role = "admin" | "agent" | "pending";
@@ -15,8 +16,11 @@ export type SessionUser = {
  * Liefert den eingeloggten Nutzer inkl. Rolle/Freigabe — oder null.
  * supabase.auth.getUser() validiert das JWT serverseitig (nicht getSession,
  * das dem Client vertrauen würde). Das Profil wird server-intern geladen.
+ *
+ * Per React cache() pro Request dedupliziert: auch wenn Layout + mehrere
+ * store-Funktionen + die Route ihn abfragen, läuft die Auflösung nur einmal.
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+export const getSessionUser = cache(async function getSessionUser(): Promise<SessionUser | null> {
   const supabase = await createSupabaseServer();
   const {
     data: { user },
@@ -51,4 +55,4 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   } catch {
     return fallback;
   }
-}
+});

@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { mapHtmlExport } from "@/lib/import/html-crm";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { and, eq, isNull } from "drizzle-orm";
 import { requireAuth, serverError } from "@/lib/api";
 
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
         { status: 413 },
       );
     }
-    const ownerId = OWNER_ID;
+    const user = (await getSessionUser())!;
+    const ownerId = user.id;
     const mapped = mapHtmlExport(body, ownerId);
 
     let inserted = 0;

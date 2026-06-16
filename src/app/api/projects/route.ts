@@ -5,13 +5,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { projectCreateSchema } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   if (isMockMode) {
     return NextResponse.json(
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(projects)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: user.id,
         leadId,
         name: body.name.trim(),
         status: (body.status?.trim() ||

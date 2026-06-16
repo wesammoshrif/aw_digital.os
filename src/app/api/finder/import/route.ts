@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import type { FinderLead } from "@/lib/finder/types";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { finderImportSchema } from "@/lib/validation";
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const { db } = await import("@/db");
     const { leads: leadsTable } = await import("@/db/schema");
     const { and, eq, isNull } = await import("drizzle-orm");
-    const ownerId = OWNER_ID;
+    const user = (await getSessionUser())!;
+    const ownerId = user.id;
 
     let inserted = 0;
     let skipped = 0;
@@ -123,12 +124,14 @@ export async function POST(req: NextRequest) {
     // (jetzt erzwungene) Auth-Prüfung von /api/audit/pending passiert.
     if (inserted > 0) {
       const origin = req.nextUrl.origin;
-      const auth = req.headers.get("authorization");
+      // Session-Cookie weiterreichen, damit der interne Call authentifiziert ist
+      // (Supabase-Auth läuft über Cookies, nicht den Authorization-Header).
+      const cookie = req.headers.get("cookie");
       void fetch(`${origin}/api/audit/pending`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(auth ? { authorization: auth } : {}),
+          ...(cookie ? { cookie } : {}),
         },
         body: JSON.stringify({ limit: Math.min(10, inserted) }),
       }).catch(() => {});

@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { isMockMode } from "@/lib/mode";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError } from "@/lib/api";
 
 export async function POST(
@@ -17,6 +17,7 @@ export async function POST(
 ) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const { id } = await params;
 
@@ -31,7 +32,10 @@ export async function POST(
     const { db } = await import("@/db");
     const { invoices } = await import("@/db/schema");
     const { eq, and } = await import("drizzle-orm");
-    const scope = and(eq(invoices.id, id), eq(invoices.ownerId, OWNER_ID));
+    const scope =
+      user.role === "admin"
+        ? eq(invoices.id, id)
+        : and(eq(invoices.id, id), eq(invoices.ownerId, user.id));
 
     // Angebot laden (owner-gescoped)
     const [quote] = await db.select().from(invoices).where(scope).limit(1);
@@ -52,7 +56,7 @@ export async function POST(
     const [created] = await db
       .insert(invoices)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: quote.ownerId,
         leadId: quote.leadId,
         projectId: quote.projectId,
         invoiceNumber,

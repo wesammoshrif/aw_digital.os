@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { OWNER_ID } from "@/lib/utils";
+import { getSessionUser } from "@/lib/auth/session";
 import { isMockMode } from "@/lib/mode";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { invoiceCreateSchema } from "@/lib/validation";
@@ -12,6 +12,7 @@ import { invoiceCreateSchema } from "@/lib/validation";
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
   if (denied) return denied;
+  const user = (await getSessionUser())!;
 
   const parsed = await parseJson(req, invoiceCreateSchema);
   if (parsed.response) return parsed.response;
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     const [row] = await db
       .insert(invoices)
       .values({
-        ownerId: OWNER_ID,
+        ownerId: user.id,
         leadId: body.leadId.toString().trim(),
         invoiceNumber: body.invoiceNumber.toString().trim(),
         kind: (body.kind ?? "quote") as "quote" | "invoice",
