@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import { Logo } from "./ui/Logo";
+import { UserMenu } from "./UserMenu";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -149,6 +150,7 @@ export function Sidebar({
           />
           <span>Einstellungen</span>
         </Link>
+        <UserMenu />
       </div>
       </aside>
     </>
