@@ -102,6 +102,9 @@ export const invoiceTypeEnum = pgEnum("invoice_type", [
 // Angebote sind Teil der invoices-Tabelle, unterschieden über kind.
 export const invoiceKindEnum = pgEnum("invoice_kind", ["quote", "invoice"]);
 
+// Rollen: admin (Wesam + Aschraf), agent (Mitarbeiter), pending (wartet auf Freigabe).
+export const userRoleEnum = pgEnum("user_role", ["admin", "agent", "pending"]);
+
 // ─── Tables ────────────────────────────────────────────────────────────
 
 export const leads = pgTable(
@@ -441,6 +444,58 @@ export const settings = pgTable("settings", {
     .defaultNow(),
 });
 
+// ─── Auth / Team (Multi-User) ───────────────────────────────────────────
+
+// 1:1 mit Supabase auth.users (id = auth.users.id). role steuert RBAC,
+// approved die Freigabe nach Selbst-Registrierung. Eigene SIP-Config pro
+// Mitarbeiter, damit jeder mit seiner eigenen easybell-Nummer telefoniert.
+export const profiles = pgTable("profiles", {
+  id: uuid("id").primaryKey(), // = auth.users.id
+  email: text("email").notNull(),
+  name: text("name"),
+  role: userRoleEnum("role").notNull().default("pending"),
+  approved: boolean("approved").notNull().default(false),
+
+  // Eigene Telefonie pro Mitarbeiter (Asterisk-/easybell-SIP-User)
+  sipUsername: text("sip_username"),
+  sipPassword: text("sip_password"),
+  sipDomain: text("sip_domain"),
+  sipWss: text("sip_wss"),
+  sipDisplayName: text("sip_display_name"),
+  sipClip: text("sip_clip"), // angezeigte Rufnummer (+49…)
+
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// KI-Mitarbeiter-Bewertung — NUR für Admins sichtbar (RLS), nie für den Agent.
+export const agentReviews = pgTable(
+  "agent_reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: uuid("agent_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    periodStart: timestamp("period_start", { withTimezone: true }),
+    periodEnd: timestamp("period_end", { withTimezone: true }),
+    rating: integer("rating"), // 0–100
+    strengths: jsonb("strengths").$type<string[]>(),
+    weaknesses: jsonb("weaknesses").$type<string[]>(),
+    failurePoints: jsonb("failure_points").$type<string[]>(), // wo es gescheitert ist
+    summary: text("summary"),
+    coaching: text("coaching"),
+    callsAnalyzed: integer("calls_analyzed"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("agent_reviews_agent_idx").on(t.agentId, t.createdAt)],
+);
+
 export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type Activity = typeof activities.$inferSelect;
@@ -455,3 +510,6 @@ export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;
+export type AgentReview = typeof agentReviews.$inferSelect;

@@ -8,6 +8,13 @@
       "when": 1781290299605,
       "tag": "0000_lean_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781632832765,
+      "tag": "0001_giant_black_knight",
+      "breakpoints": true
     }
   ]
 }
