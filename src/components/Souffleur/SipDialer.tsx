@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   Phone,
   PhoneOff,
@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { EasybellSipClient, type SipStatus } from "@/lib/sip/client";
 import { cn } from "@/lib/utils";
+
+/** Imperative Steuerung, die der SipDialer an den Eltern-Room durchreicht. */
+export type SipControl = { hangup: () => void; isActive: () => boolean };
 
 /**
  * Dialer für den Souffleur.
@@ -23,11 +26,13 @@ export function SipDialer({
   onRemoteStream,
   onStatus,
   autoDial = false,
+  controlRef,
 }: {
   defaultNumber?: string;
   onRemoteStream?: (stream: MediaStream | null) => void;
   onStatus?: (status: SipStatus) => void;
   autoDial?: boolean;
+  controlRef?: MutableRefObject<SipControl | null>;
 }) {
   const [number, setNumber] = useState(defaultNumber ?? "");
   const [status, setStatus] = useState<SipStatus>("idle");
@@ -99,6 +104,10 @@ export function SipDialer({
   }
 
   const active = status === "ringing" || status === "in-call";
+
+  // Hangup-Funktion nach oben durchreichen, damit das Cockpit-„Auflegen"
+  // den Anruf aktiv per BYE beendet (nicht nur das Fenster schließt).
+  if (controlRef) controlRef.current = { hangup, isActive: () => active };
 
   return (
     <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-surface-2)] p-3 shadow-sm">

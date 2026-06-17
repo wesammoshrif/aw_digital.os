@@ -44,7 +44,7 @@ import {
   fillTradeHook,
   buildTradeContext,
 } from "@/lib/souffleur/tradePlaybook";
-import { SipDialer } from "./SipDialer";
+import { SipDialer, type SipControl } from "./SipDialer";
 import { ShareGuide } from "./ShareGuide";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +146,8 @@ export function SouffleurRoom({
   const rafRef = useRef<number | null>(null);
   const dgWsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  // Imperative Hangup-Steuerung des SIP-Dialers (für „Auflegen" im Cockpit).
+  const sipControlRef = useRef<SipControl | null>(null);
 
   // ── Tipp-Pipeline-Refs ─────────────────────────────────────────
   const custRef = useRef(""); // rollendes Kunden-Transkript (für Matcher)
@@ -822,13 +824,21 @@ export function SouffleurRoom({
   }
 
   function disposition(key: string) {
+    // 1. Laufenden Browser-Anruf aktiv beenden (SIP-BYE), SOLANGE der WebSocket
+    //    noch lebt — sonst bleibt der Anruf beim Gegenüber/Handy stehen.
+    try {
+      sipControlRef.current?.hangup();
+    } catch {}
+    // 2. Dispo an die Pipeline melden.
     try {
       window.opener?.postMessage(
         { type: "souffleur:dispo", leadId: lead.id, dispo: key },
         window.location.origin,
       );
     } catch {}
-    setTimeout(() => window.close(), 60);
+    // 3. Erst schließen, wenn das BYE über die WSS-Verbindung raus ist
+    //    (Fenster-Close reißt sonst den Socket vor dem BYE ab).
+    setTimeout(() => window.close(), 280);
   }
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
@@ -854,6 +864,9 @@ export function SouffleurRoom({
             onClick={() => {
               setMaybeEnded(false);
               setCallEnded(true);
+              try {
+                sipControlRef.current?.hangup();
+              } catch {}
               stopSystem();
             }}
             className="rounded-full bg-[#ffeceb] px-3 py-1 text-[12px] font-semibold text-[#d70015] hover:bg-[#ffd1cf]"
@@ -1115,6 +1128,7 @@ export function SouffleurRoom({
             autoDial={autoDial}
             onRemoteStream={(stream) => handleSipRemoteStream(stream)}
             onStatus={handleSipStatus}
+            controlRef={sipControlRef}
           />
         </div>
 
