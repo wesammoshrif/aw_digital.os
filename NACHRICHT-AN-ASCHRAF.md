@@ -12,6 +12,11 @@ Aus dem Single-User-Cockpit ist ein **richtiges Mehrbenutzer-System mit Login,
 Rollen und echter Daten-Trennung** geworden — plus eine komplette Security-Runde
 und das Docker-Deploy-Kit für deinen VPS (kein Vercel).
 
+Der Code ist fertig und getestet. **Was jetzt fehlt, ist das Deployment — und das
+ist dein Job, weil DU den VPS hast.** Du ziehst das Go-Live durch (siehe Abschnitt 6,
+volle Anleitung in `GO-LIVE.md`). Ich kann am Code nichts mehr „online-machen", das
+passiert auf deinem Server.
+
 Unten steht **alles** im Detail, was gemacht wurde, und was **du** noch tun musst.
 Lies das, bevor du anfängst — sonst trittst du in Sachen rein, die schon gelöst sind.
 
@@ -108,6 +113,26 @@ CI ist grün (`npm ci` lock-sync gefixt, `@emnapi/core`-Optional-Deps nachgezoge
 
 ---
 
+## ⚡ 4b. Neu (Stand 17.06.2026)
+
+- **Souffleur komplett neu:** Die KI ist jetzt der **Dirigent** — sie gibt den
+  exakten Satz vor (wörtlich ablesen) UND bestimmt die **Gesprächswärme**
+  (kalt → lau → warm → heiß). UI radikal entrümpelt: nur noch Wärme-Leiste + EIN
+  großer Satz, alles andere in einer Schublade. Schneller (400 ms + Gesprächs-
+  Gedächtnis), Deepgram `endpointing=300`. **`src/lib/sip/client.ts` unverändert.**
+- **Auflegen-Fix:** Cockpit-„Auflegen" sendet jetzt aktiv das SIP-BYE
+  (`SipDialer.hangup()` wird hochgereicht) — beim Browser-Direktanruf endet der
+  Anruf jetzt wirklich. Beim `tel:`-Weg (easybell-App) muss weiter am Handy
+  aufgelegt werden (Browser hat dort kein Signal).
+- **Phase 8 FERTIG:** diskrete KI-Mitarbeiter-Bewertung unter `/team/[mitarbeiter]`
+  (nur Admins, RLS-geschützt) — Rating, Stärken/Schwächen, Coaching aus den echten
+  Anrufdaten. Der Mitarbeiter sieht das nie.
+- **Go-Live-Härtung:** `/auth/callback`-Route (E-Mail-Bestätigung funktioniert),
+  Signup mit Retry, Letzter-Admin-Schutz, **`APP_PASSWORD` ist raus** (Auth läuft
+  jetzt komplett über Supabase).
+
+---
+
 ## ✅ 5. Verifiziert
 
 - `npx tsc --noEmit` → **EXIT 0**
@@ -117,30 +142,46 @@ CI ist grün (`npm ci` lock-sync gefixt, `@emnapi/core`-Optional-Deps nachgezoge
 
 ---
 
-## 📋 6. Was DU (Aschraf) noch tun musst
+## 🚀 6. DEIN JOB JETZT: Go-Live auf dem VPS (du hast den Zugang)
 
-1. **`ADMIN_EMAILS` in `.env.local` setzen** (Komma-getrennt, deine + Wesams Adresse):
-   `ADMIN_EMAILS=<wesams-mail>,<deine-mail>`
-   Dann auf `/signup` mit **deiner** Admin-Mail registrieren → du bist automatisch Admin.
-2. **Per-Nutzer-SIP-Accounts auf dem Asterisk anlegen** (das ist dein Part — Phase 7):
-   Damit jeder Mitarbeiter seine **eigene easybell-Nummer** hat. Die Schema-Felder
-   (`profiles.sip*`) existieren schon, sind aber noch **nicht verdrahtet** — `/api/sip/config`
-   gibt aktuell noch die **globale** Env-Config zurück, nicht die pro-Nutzer.
-3. **Bei frischem Deploy:** `npm run db:migrate` wendet die RLS-Migrationen mit an.
-4. **Deepgram-Owner-Key** hinterlegen (sonst 403 auf die Live-Transkription).
+**Das Deployment ist deine Baustelle — du hast den VPS (`5.231.248.34`), also
+ziehst du das durch.** Volle Schritt-für-Schritt-Anleitung: **`GO-LIVE.md`**.
+Kurzfassung der Blocker:
+
+1. **Code holen + `.env` setzen** auf dem VPS — Pflichtwerte (sonst bricht der Boot ab):
+   `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+   `NEXT_PUBLIC_DB_CONNECTED=true`, `ADMIN_EMAILS` (deine + Wesams Mail),
+   `CRON_SECRET`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY` (**Owner**-Key!).
+   ➜ **Kein `APP_PASSWORD` mehr** — Auth läuft über Supabase.
+2. **DB-Schema + RLS anwenden:** `docker compose run --rm app npm run db:migrate`
+   — **`db:migrate`, NICHT `db:push`** (sonst fehlt die komplette Daten-Trennung!).
+3. **Starten:** `docker compose up -d --build` + Domain/TLS im `Caddyfile`.
+   Port-80-Koexistenz mit deinem Asterisk-certbot beachten (`DEPLOY.md` §5).
+4. **Supabase** → Authentication → Site-URL + Redirect-URL (`…/auth/callback`)
+   auf die Deploy-Domain setzen.
+5. **Erster Login:** mit deiner `ADMIN_EMAILS`-Adresse auf `/signup` → du bist Admin.
+   Dann Wesam genauso, dann Mitarbeiter freigeben.
+
+### Außerdem dein Telefonie-Part:
+- **Deepgram-Owner-Key** hinterlegen (Member-Key → 403, keine Kunden-Transkription).
+- **Phase 7 — eigene easybell-Nummer pro Mitarbeiter:** SIP-Accounts pro Mitarbeiter
+  auf dem Asterisk anlegen. Schema-Felder (`profiles.sip*`) existieren; sobald deine
+  Accounts stehen, verdrahtet Wesam `/api/sip/config` pro Nutzer.
+- **Audio Telefon→Browser** beim Browser-Direktanruf final live testen (Handoff §7).
 
 ---
 
-## 🔭 7. Was noch offen ist (eigene Phasen, kein Blocker)
+## 🔭 7. Was noch offen ist (kein Code-Blocker)
 
-- **Phase 7 — eigene easybell-Nummer pro Mitarbeiter.** Schema da, Verdrahtung +
-  deine Asterisk-SIP-Accounts fehlen.
-- **Phase 8 — diskrete KI-Mitarbeiter-Bewertung (nur Admins).** Die KI fasst zusammen,
-  wie gut jeder Mitarbeiter ist und wo es hakt — **nur du und Wesam seht das**.
-  `agent_reviews`-Tabelle existiert, KI-Generierung + UI fehlen noch.
-- **Kleinere Härtung:** Letzter-Admin-Schutz, RLS-Migration über `db:push`
-  reproduzierbar machen, Signup-Profil-Anlage mit Retry, Session-Hard-Revoke beim
-  Sperren (aktuell schon durchs Freigabe-Gate entschärft).
+- **Phase 7 — eigene easybell-Nummer pro Mitarbeiter** (dein Asterisk-Part, siehe Abschnitt 6).
+- **Tieferer Souffleur-Inhalt** als nächste Stufe: Gatekeeper-Playbook, Preis-Einwand-
+  Matrix, Auto-Closing je Branche als echte Daten-Module + Sprecher-Trennung im Audio.
+- **§14-konformes Rechnungs-PDF + Mahnwesen + wiederkehrende Wartungsrechnungen** (Cron-TODO).
+- **Recht vor echtem Kundenkontakt:** AV-Verträge (Anthropic/Deepgram/Supabase) +
+  Datenschutzerklärung, §201 StGB (Aufnahme-Zustimmung), UWG §7 (Kaltakquise).
+
+> Phase 8 (KI-Bewertung), Letzter-Admin-Schutz, Signup-Retry, `/auth/callback` und
+> die RLS-Reproduzierbarkeit sind **erledigt** (siehe Abschnitt 4b).
 
 ---
 
