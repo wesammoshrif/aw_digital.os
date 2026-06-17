@@ -3,6 +3,14 @@
 # Secrets liegen in einer .env NEBEN dieser Datei (NICHT committen!) —
 # siehe .env.example für die Liste, DEPLOY.md für die Anleitung.
 
+# Log-Rotation: ohne das wachsen die Container-Logs UNBEGRENZT und füllen
+# irgendwann die VPS-Platte. Max 10 MB × 3 Dateien pro Container = Deckel.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   # ── Next.js-App (nur intern, Caddy macht den Public-Zugang) ──
   app:
@@ -13,9 +21,10 @@ services:
         NEXT_PUBLIC_DB_CONNECTED: "true"
     image: aw-digital-os:latest
     restart: unless-stopped
-    env_file: .env # DATABASE_URL, APP_PASSWORD, ASTERISK_*, ANTHROPIC_API_KEY, …
+    env_file: .env # DATABASE_URL, NEXT_PUBLIC_SUPABASE_*, ASTERISK_*, ANTHROPIC_API_KEY, …
     expose:
       - "3000"
+    logging: *default-logging
 
   # ── Caddy: Reverse-Proxy + automatisches HTTPS (Let's Encrypt) ──
   caddy:
@@ -30,6 +39,7 @@ services:
       - caddy_config:/config
     depends_on:
       - app
+    logging: *default-logging
 
   # ── Cron-Sidecar: ruft stündlich /api/cron/tick (Termin-Erinnerungen) ──
   cron:
@@ -38,6 +48,7 @@ services:
     env_file: .env # liest CRON_SECRET
     depends_on:
       - app
+    logging: *default-logging
     command:
       - sh
       - -c
