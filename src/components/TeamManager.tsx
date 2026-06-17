@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type U = {
@@ -66,6 +67,14 @@ export function TeamManager({ users, meId }: { users: U[]; meId: string }) {
             </span>
 
             <div className="flex flex-wrap gap-1.5">
+              {u.approved && (
+                <Link
+                  href={`/team/${u.id}`}
+                  className="rounded-full bg-[var(--color-surface-3)] px-3 py-1.5 text-[12px] font-semibold text-[var(--color-fg-dim)] transition hover:bg-[var(--color-hairline)]"
+                >
+                  Bewertung
+                </Link>
+              )}
               {!u.approved && (
                 <ActionBtn
                   onClick={() => act(u.id, "approve")}

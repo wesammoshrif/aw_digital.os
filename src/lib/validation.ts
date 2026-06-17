@@ -112,3 +112,9 @@ export const souffleurSummarySchema = z.object({
   company: optStr,
   trade: z.string().max(200).nullable().optional(),
 });
+
+// Phase 8: KI-Mitarbeiter-Bewertung (admin-only). agentId = profiles.id.
+export const agentReviewSchema = z.object({
+  agentId: z.string().uuid(),
+  periodDays: z.number().int().min(1).max(365).optional(),
+});
