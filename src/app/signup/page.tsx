@@ -11,7 +11,23 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Profil-Anlage mit kurzem Retry — nicht mehr „fire and forget", damit ein
+  // einzelner Netz-/Timing-Fehler den Nutzer nicht profillos zurücklässt.
+  async function ensureProfile(): Promise<boolean> {
+    for (let i = 0; i < 3; i++) {
+      try {
+        const res = await fetch("/api/auth/profile", { method: "POST" });
+        if (res.ok) return true;
+      } catch {
+        /* retry */
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return false;
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,11 +37,18 @@ export default function SignupPage() {
     }
     setBusy(true);
     setError(null);
+    setInfo(null);
     const supabase = createSupabaseBrowser();
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
-      options: { data: { name: name.trim() } },
+      options: {
+        data: { name: name.trim() },
+        emailRedirectTo:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/auth/callback`
+            : undefined,
+      },
     });
     if (error) {
       setError(
@@ -36,8 +59,28 @@ export default function SignupPage() {
       setBusy(false);
       return;
     }
-    // Profil serverseitig anlegen (Rolle wird aus ADMIN_EMAILS bestimmt).
-    await fetch("/api/auth/profile", { method: "POST" }).catch(() => {});
+
+    // E-Mail-Bestätigung aktiv? Dann gibt es noch KEINE Session → Hinweis
+    // statt Weiterleitung. Das Profil entsteht dann über /auth/callback.
+    if (!data.session) {
+      setBusy(false);
+      setInfo(
+        "Fast geschafft — bestätige deine E-Mail über den Link, den wir dir " +
+          "gerade geschickt haben. Danach kannst du dich anmelden.",
+      );
+      return;
+    }
+
+    // Profil serverseitig anlegen (Rolle aus ADMIN_EMAILS) — mit Retry.
+    const ok = await ensureProfile();
+    if (!ok) {
+      setBusy(false);
+      setError(
+        "Konto erstellt, aber das Profil konnte nicht angelegt werden. " +
+          "Bitte einmal neu anmelden — dann wird es nachgeholt.",
+      );
+      return;
+    }
     router.push("/");
     router.refresh();
   }
@@ -82,6 +125,11 @@ export default function SignupPage() {
             className="w-full rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface-2)] px-3 py-2.5 text-[14px] outline-none focus:border-[var(--color-copper-500)]"
           />
           {error && <p className="text-[12px] text-[#d70015]">{error}</p>}
+          {info && (
+            <p className="rounded-md bg-[#e6f7ea] px-3 py-2 text-[12px] text-[#1a7f37]">
+              {info}
+            </p>
+          )}
           <button
             type="submit"
             disabled={busy}

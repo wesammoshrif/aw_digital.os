@@ -44,8 +44,26 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const { profiles } = await import("@/db/schema");
-    const { eq } = await import("drizzle-orm");
+    const { eq, and } = await import("drizzle-orm");
     await withRls(me, async (tx) => {
+      // Letzten Admin schützen: ein admin darf nicht herabgestuft/gesperrt
+      // werden, wenn er der einzige freigegebene Admin ist (Aussperr-Schutz
+      // auch über die Selbst-Sperre hinaus).
+      if (action === "makeAgent" || action === "deactivate") {
+        const [target] = await tx
+          .select({ role: profiles.role })
+          .from(profiles)
+          .where(eq(profiles.id, id))
+          .limit(1);
+        if (target?.role === "admin") {
+          const admins = await tx
+            .select({ id: profiles.id })
+            .from(profiles)
+            .where(and(eq(profiles.role, "admin"), eq(profiles.approved, true)));
+          if (admins.length <= 1) throw new Error("LAST_ADMIN");
+        }
+      }
+
       let patch: { role?: "admin" | "agent"; approved: boolean };
       if (action === "approve") {
         // Freigeben/Reaktivieren: pending → agent, vorhandene Rolle
@@ -73,6 +91,16 @@ export async function PATCH(req: NextRequest) {
     });
     return NextResponse.json({ ok: true });
   } catch (err) {
+    if (err instanceof Error && err.message === "LAST_ADMIN") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Das ist der einzige Admin — vorher jemand anderen zum Admin machen.",
+        },
+        { status: 400 },
+      );
+    }
     console.error("[admin/users]", err);
     return NextResponse.json(
       { ok: false, error: "Aktion fehlgeschlagen." },
