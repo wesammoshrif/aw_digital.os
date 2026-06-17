@@ -12,17 +12,14 @@ import {
   Copy,
   Check,
   TestTube,
-  Phone,
-  CheckCircle2,
-  Circle,
   Zap,
+  Flame,
+  ChevronDown,
 } from "lucide-react";
 import type { Lead } from "@/db/schema";
 import {
-  PLAYBOOK,
   QUICK_OBJECTIONS,
   CLOSING_TECHNIQUES,
-  KIND_LABEL,
   VOICEMAIL_SCRIPT,
   getMove,
   fillHook,
@@ -35,16 +32,20 @@ import {
   POWER_QUESTIONS,
   MICRO_COMMITMENTS,
 } from "@/lib/souffleur/strategies";
+import {
+  PHASES,
+  isPhase,
+  estimatePhase,
+  type Phase,
+} from "@/lib/souffleur/phases";
 import { TEST_SCRIPTS, type ScriptStep } from "@/lib/souffleur/testScripts";
 import {
   getTradeCard,
   fillTradeHook,
   buildTradeContext,
-  type TradeCard,
 } from "@/lib/souffleur/tradePlaybook";
 import { SipDialer } from "./SipDialer";
 import { ShareGuide } from "./ShareGuide";
-import type { SipStatus } from "@/lib/sip/client";
 import { cn } from "@/lib/utils";
 
 const DISPOS = [
@@ -58,10 +59,23 @@ const DISPOS = [
   { key: "wrong_number", label: "Falsche Nr.", tone: "danger" },
 ] as const;
 
-export function SouffleurRoom({ 
+// Aktiv-Stile pro Gesprächswärme: kühl-blau (kalt) → heiß-rot (heiß).
+const PHASE_STYLE: Record<Phase, string> = {
+  kalt: "bg-[#e7f0ff] text-[#0a3977] ring-1 ring-[#9cc0ff]",
+  lau: "bg-[#e9f2fe] text-[var(--color-copper-700)] ring-1 ring-[var(--color-copper-300)]",
+  warm: "bg-[#fff2e3] text-[#b25000] ring-1 ring-[#fdc98a]",
+  heiss: "bg-[#ffeceb] text-[#d70015] ring-1 ring-[#ffb3ae]",
+};
+
+// Deepgram-Stream-URL: endpointing=300 wartet ~300 ms Sprechpause ab → ganze
+// Sätze statt zerbrochener Fragmente (deutlich treffsicherer Matcher + KI).
+const DG_URL =
+  "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&endpointing=300&smart_format=true&punctuate=true";
+
+export function SouffleurRoom({
   lead,
   autoDial = false,
-}: { 
+}: {
   lead: Lead;
   autoDial?: boolean;
 }) {
@@ -87,10 +101,14 @@ export function SouffleurRoom({
   const [testStep, setTestStep] = useState(0);
   const [testHint, setTestHint] = useState<string | null>(null);
   const [micAsCustomer, setMicAsCustomer] = useState(false);
-  const [dialNumber, setDialNumber] = useState("");
   const [showShareGuide, setShowShareGuide] = useState(false);
   const [showVoicemail, setShowVoicemail] = useState(false);
   const [briefingOpen, setBriefingOpen] = useState(true);
+  // Phase 9: Gesprächswärme + KI-Begründung + Werkzeug-Schublade.
+  const [phase, setPhase] = useState<Phase>("kalt");
+  const [why, setWhy] = useState<string | null>(null);
+  const [toolsOpen, setToolsOpen] = useState(false);
+
   // Berater-Name (einmal setzen, füllt „[Name]" in allen Sätzen → nur ablesen).
   const [repName, setRepName] = useState("");
   useEffect(() => {
@@ -129,10 +147,17 @@ export function SouffleurRoom({
   const dgWsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
 
-  const tradeCard = useMemo(
-    () => getTradeCard(lead.trade),
-    [lead.trade],
-  );
+  // ── Tipp-Pipeline-Refs ─────────────────────────────────────────
+  const custRef = useRef(""); // rollendes Kunden-Transkript (für Matcher)
+  const historyRef = useRef<string[]>([]); // letzte Kundenaussagen (für die KI)
+  const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiGenRef = useRef(0); // Stale-Guard: nur die jüngste KI-Antwort gilt
+  const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
+  const elapsedRef = useRef(0);
+  const phaseRef = useRef<Phase>("kalt");
+  const repNameRef = useRef("");
+
+  const tradeCard = useMemo(() => getTradeCard(lead.trade), [lead.trade]);
   const tradeHook = useMemo(
     () =>
       tradeCard
@@ -148,9 +173,6 @@ export function SouffleurRoom({
   );
 
   const hookLine = useMemo(() => {
-    // Opener: branchenscharfer Einstieg als Hauptsatz, wenn das Gewerk erkannt
-    // ist — der wirkt sofort kundig. Sonst ein website-adaptiver Generik-Opener
-    // (kein „Ihre Website angesehen", wenn der Betrieb gar keine hat).
     if (move.id === "opener" && tradeHook) {
       return fillName(tradeHook);
     }
@@ -173,7 +195,6 @@ export function SouffleurRoom({
     : null;
 
   // ── Timer ──────────────────────────────────────────────────────
-  // Friert ein, sobald das (Browser-)Gespräch endet (callEnded).
   useEffect(() => {
     if (callEnded) return;
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -182,14 +203,12 @@ export function SouffleurRoom({
 
   // ── Mikro via Deepgram (zuverlässig, gleicher Anbieter wie Kunde) ──
   const startMic = useCallback(async () => {
-    // Bereits live → nichts tun (Doppelstart durch Autostart+Button verhindern)
     if (micStreamRef.current) return;
     const gen = ++micGenRef.current;
 
     setMicError(null);
     setMicStatus("idle");
 
-    // 1. Mic-Permission + Stream
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -211,7 +230,6 @@ export function SouffleurRoom({
       setMicError(msg);
       return;
     }
-    // Stop während getUserMedia? Dann diesen Start abbrechen.
     if (gen !== micGenRef.current) {
       stream.getTracks().forEach((t) => t.stop());
       return;
@@ -219,7 +237,6 @@ export function SouffleurRoom({
     micStreamRef.current = stream;
     setListening(true);
 
-    // 2. Pegel-Meter
     const ctx = new AudioContext();
     micCtxRef.current = ctx;
     const src = ctx.createMediaStreamSource(stream);
@@ -235,26 +252,22 @@ export function SouffleurRoom({
     };
     tick();
 
-    // 3. Deepgram WebSocket
     try {
       const tok = await fetch("/api/souffleur/deepgram-token", {
         method: "POST",
       }).then((r) => r.json());
-      // Stop während Token-Fetch? Sauber raus, kein WS öffnen.
       if (gen !== micGenRef.current) return;
       if (!tok.ok) {
         setMicStatus("no-key");
         return;
       }
-      const ws = new WebSocket(
-        "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
-        // --- END MODIFIED ---
-        ["token", tok.token],
-      );
+      const ws = new WebSocket(DG_URL, ["token", tok.token]);
       micWsRef.current = ws;
       ws.onopen = () => {
         if (ws !== micWsRef.current || gen !== micGenRef.current) {
-          try { ws.close(); } catch {}
+          try {
+            ws.close();
+          } catch {}
           return;
         }
         setMicStatus("live");
@@ -276,18 +289,8 @@ export function SouffleurRoom({
             | undefined;
           if (text && d.is_final) {
             setTranscript((prev) => (prev + " " + text).slice(-1200));
-            // Test-Modus „Mein Mikro = Kunde": Mic-Text in Customer-Spalte
-            // spiegeln und Matcher reagieren lassen.
             if (micAsCustomerRef.current) {
-              setCustomerTranscript((prev) =>
-                (prev + " " + text).slice(-1400),
-              );
-              const mv = matchMove(text);
-              if (mv) {
-                setMove(mv);
-                setDetected(mv.label + " · Mikro-Test");
-                setAiLine(null);
-              }
+              onCustomerText(text, "Mikro-Test");
             }
           }
         } catch {
@@ -307,10 +310,13 @@ export function SouffleurRoom({
       setMicStatus("error");
       setMicError(String(err));
     }
+    // onCustomerText ist stabil (refs); bewusst nicht in den Deps, um Reconnect
+    // des Mikros bei jedem Tipp zu vermeiden.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stopMic = useCallback(() => {
-    micGenRef.current++; // alle laufenden Async-Starts invalidieren
+    micGenRef.current++;
     try {
       micRecorderRef.current?.stop?.();
     } catch {}
@@ -318,10 +324,10 @@ export function SouffleurRoom({
     const ws = micWsRef.current;
     micWsRef.current = null;
     if (ws) {
-      // Handler abkoppeln, damit ein verspäteter onerror (CONNECTING → close)
-      // den Status nicht auf "Deepgram-Verbindung fehlgeschlagen" springt.
       ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null;
-      try { ws.close(); } catch {}
+      try {
+        ws.close();
+      } catch {}
     }
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     micStreamRef.current = null;
@@ -334,58 +340,80 @@ export function SouffleurRoom({
     setMicStatus("idle");
   }, []);
 
-  // ── Gemeinsamer Kunden-Handler: Transkript + Matcher + Auto-Haiku ──
-  const custRef = useRef("");
-  const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Stale-Guard für Haiku-Antworten: nur die jüngste Antwort darf den Satz setzen.
-  const aiGenRef = useRef(0);
+  // ── KI-Dirigent fragen: gibt Satz + Phase + Begründung ──────────
+  const askAiNow = useCallback(() => {
+    lastAiLenRef.current = custRef.current.length;
+    const gen = ++aiGenRef.current;
+    const nein = classifyNein(custRef.current.slice(-200));
+    fetch("/api/souffleur/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        history: historyRef.current.slice(-4),
+        transcript: custRef.current.slice(-700),
+        hook: lead.auditHook,
+        company: lead.company,
+        trade: lead.trade,
+        tradeContext: tradeCard ? buildTradeContext(tradeCard) : null,
+        neinTyp: nein,
+        phase: phaseRef.current,
+        elapsedSec: elapsedRef.current,
+        repName: repNameRef.current.trim() || null,
+      }),
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (gen !== aiGenRef.current || !res.ok) return;
+        if (res.line) setAiLine(res.line);
+        if (isPhase(res.phase)) setPhase(res.phase);
+        setWhy(typeof res.why === "string" ? res.why : null);
+      })
+      .catch(() => {
+        /* lokaler Tipp bleibt stehen */
+      });
+  }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
+
+  // ── Gemeinsamer Kunden-Handler: Transkript + Matcher + KI ───────
   const onCustomerText = useCallback(
     (text: string, sourceLabel: string) => {
       if (!text.trim()) return;
       setCustomerTranscript((prev) => (prev + " " + text).slice(-1400));
       custRef.current = (custRef.current + " " + text).slice(-1600);
+      historyRef.current = [...historyRef.current, text.trim()].slice(-6);
 
-      // 1. Sofort: lokaler Matcher auf dem ROLLENDEN Transkript (0 ms) —
-      //    sonst fallen über zwei Deepgram-Chunks gesplittete Einwände
-      //    („keine" + „zeit dafür") durch und der Satz bleibt auf dem Opener.
+      // 1. Sofort: lokaler Matcher (0 ms) auf dem rollenden Transkript —
+      //    fängt auch über zwei Deepgram-Chunks gesplittete Einwände.
       const mv = matchMove(custRef.current);
       if (mv) {
         setMove(mv);
         setDetected(mv.label + " · " + sourceLabel);
-        setAiLine(null);
+        setPhase(
+          estimatePhase({
+            elapsedSec: elapsedRef.current,
+            moveKind: mv.kind,
+            neinTyp: classifyNein(custRef.current.slice(-200)),
+            customerSpoke: true,
+          }),
+        );
       }
 
-      // 2. Debounced: Haiku verfeinert (~1 s). Stale-Guard: nur die jüngste
-      //    Antwort darf den Satz setzen (out-of-order-Schutz bei schnellen Finals).
+      // 2. KI verfeinert: SOFORT bei großem Zuwachs (neuer Satz, >150 Z.),
+      //    sonst 400 ms Debounce. Stale-Guard in askAiNow.
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-      aiDebounceRef.current = setTimeout(async () => {
-        const gen = ++aiGenRef.current;
-        try {
-          const res = await fetch("/api/souffleur/suggest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              transcript: custRef.current.slice(-700),
-              hook: lead.auditHook,
-              company: lead.company,
-              trade: lead.trade,
-              tradeContext: tradeCard
-                ? buildTradeContext(tradeCard)
-                : null,
-            }),
-          }).then((r) => r.json());
-          if (gen === aiGenRef.current && res.ok && res.line) setAiLine(res.line);
-        } catch {
-          /* lokaler Tipp bleibt stehen */
-        }
-      }, 800);
+      if (custRef.current.length - lastAiLenRef.current > 150) {
+        askAiNow();
+      } else {
+        aiDebounceRef.current = setTimeout(askAiNow, 400);
+      }
     },
-    [lead.auditHook, lead.company, lead.trade, tradeCard],
+    [askAiNow],
   );
 
-  // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ─────────
+  // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
   const teardownCustomerPipeline = useCallback(() => {
-    try { recorderRef.current?.stop?.(); } catch {}
+    try {
+      recorderRef.current?.stop?.();
+    } catch {}
     recorderRef.current = null;
     if (dgWsRef.current) {
       const ws = dgWsRef.current;
@@ -393,12 +421,16 @@ export function SouffleurRoom({
       ws.onerror = null;
       ws.onmessage = null;
       dgWsRef.current = null;
-      try { ws.close(); } catch {}
+      try {
+        ws.close();
+      } catch {}
     }
     sysStreamRef.current?.getTracks().forEach((t) => t.stop());
     sysStreamRef.current = null;
     if (sysCtxRef.current) {
-      try { sysCtxRef.current.close(); } catch {}
+      try {
+        sysCtxRef.current.close();
+      } catch {}
       sysCtxRef.current = null;
     }
     setSysListening(false);
@@ -418,7 +450,6 @@ export function SouffleurRoom({
       sysStreamRef.current = stream;
       setSysListening(true);
 
-      // Pegel-Meter
       const ctx = new AudioContext();
       sysCtxRef.current = ctx;
       const src = ctx.createMediaStreamSource(stream);
@@ -434,7 +465,6 @@ export function SouffleurRoom({
       };
       tick();
 
-      // Deepgram-Stream
       try {
         const tok = await fetch("/api/souffleur/deepgram-token", {
           method: "POST",
@@ -443,11 +473,7 @@ export function SouffleurRoom({
           setDgStatus("no-key");
           return;
         }
-        const ws = new WebSocket(
-            "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
-          // --- END MODIFIED ---
-          ["token", tok.token],
-        );
+        const ws = new WebSocket(DG_URL, ["token", tok.token]);
         dgWsRef.current = ws;
         ws.onopen = () => {
           setDgStatus("live");
@@ -486,9 +512,17 @@ export function SouffleurRoom({
 
   // ── System-Audio (PC-Ausgang = Stimme des Kunden) ───────────────
   const startSystem = useCallback(
-    async (): Promise<{ ok: boolean; noAudio?: boolean; dg?: "live" | "no-key" | "error" }> => {
+    async (): Promise<{
+      ok: boolean;
+      noAudio?: boolean;
+      dg?: "live" | "no-key" | "error";
+    }> => {
       try {
-        const stream = await (navigator.mediaDevices as any).getDisplayMedia({
+        const stream = await (
+          navigator.mediaDevices as MediaDevices & {
+            getDisplayMedia: (c: unknown) => Promise<MediaStream>;
+          }
+        ).getDisplayMedia({
           video: true,
           audio: {
             echoCancellation: false,
@@ -526,7 +560,6 @@ export function SouffleurRoom({
 
         audioTracks[0].onended = () => stopSystem();
 
-        // ── Deepgram — auf WS-open warten (max 5 s) ─────────────────
         try {
           const tok = await fetch("/api/souffleur/deepgram-token", {
             method: "POST",
@@ -541,10 +574,7 @@ export function SouffleurRoom({
               setDgStatus("error");
               resolve("error");
             }, 5000);
-            const ws = new WebSocket(
-              "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&smart_format=true&punctuate=true",
-              ["token", tok.token],
-            );
+            const ws = new WebSocket(DG_URL, ["token", tok.token]);
             dgWsRef.current = ws;
             ws.onopen = () => {
               clearTimeout(timeout);
@@ -600,12 +630,11 @@ export function SouffleurRoom({
   );
 
   // Browser-Direktanruf: Gesprächsende automatisch erkennen → Souffleur stoppen.
-  // (Beim tel:-Link gibt es im Browser KEIN Signal — dort manuell beenden.)
   const callWasActiveRef = useRef(false);
   const handleSipStatus = useCallback(
     (s: string) => {
       if (s === "ringing" || s === "in-call") {
-        if (!callWasActiveRef.current) setElapsed(0); // neues Gespräch → Timer frisch
+        if (!callWasActiveRef.current) setElapsed(0);
         callWasActiveRef.current = true;
         setCallEnded(false);
       } else if (
@@ -613,17 +642,14 @@ export function SouffleurRoom({
         callWasActiveRef.current
       ) {
         callWasActiveRef.current = false;
-        setCallEnded(true); // Timer einfrieren
-        stopSystem(); // Transkription stoppen
+        setCallEnded(true);
+        stopSystem();
       }
     },
     [stopSystem],
   );
 
   // ── Stille-Erkennung: Gesprächsende auch beim tel:-Anruf erkennen ──
-  // Der Browser hat bei tel: kein SIP-Signal, also über die Audio-Pegel:
-  // 25 s beidseitige Stille → sanfter Prompt, 45 s → automatisch stoppen.
-  // Greift nur, wenn Mikro ODER Kunden-Ton an ist (sonst kein Fehlalarm).
   const micLevelRef = useRef(0);
   const sysLevelRef = useRef(0);
   const listeningRef = useRef(false);
@@ -637,6 +663,10 @@ export function SouffleurRoom({
   sysListeningRef.current = sysListening;
   callEndedRef.current = callEnded;
   stopSystemRef.current = stopSystem;
+  // Phase 9: Live-Werte für die KI-Pipeline spiegeln.
+  elapsedRef.current = elapsed;
+  phaseRef.current = phase;
+  repNameRef.current = repName;
   useEffect(() => {
     const t = setInterval(() => {
       if (callEndedRef.current) {
@@ -655,20 +685,18 @@ export function SouffleurRoom({
         }
       } else {
         silentSecsRef.current = 0;
-        setMaybeEnded(false); // no-op wenn bereits false
+        setMaybeEnded(false);
       }
     }, 1000);
     return () => clearInterval(t);
   }, []);
 
   // ── Gemeinsamer Reset für den Kunden-Kontext ────────────────────
-  // Wichtig: leert auch custRef + pending Haiku-Debounce, damit Test-
-  // Einwände nicht in den echten Call übergehen (oder umgekehrt).
   const resetCustomerContext = useCallback(() => {
     custRef.current = "";
+    historyRef.current = [];
+    lastAiLenRef.current = 0;
     setCustomerTranscript("");
-    // Laufende Haiku-Fetches invalidieren — sonst füllt eine alte Antwort
-    // nach dem Reset (z.B. Test→echter Call) den Satz wieder.
     aiGenRef.current++;
     if (aiDebounceRef.current) {
       clearTimeout(aiDebounceRef.current);
@@ -676,6 +704,8 @@ export function SouffleurRoom({
     }
     setAiLine(null);
     setDetected(null);
+    setWhy(null);
+    setPhase("kalt");
   }, []);
 
   // ── Test-Modus: Skript-Anruf (fiktiver Kunde) ───────────────────
@@ -694,8 +724,6 @@ export function SouffleurRoom({
         if (i >= script.length) {
           setTestHint("Test fertig — Reset, dann ist der echte Call sauber.");
           setTestActive(null);
-          // Wichtig: Test-Inhalte aus dem Haiku-Kontext entfernen, sonst
-          // antwortet die KI im echten Call auf Test-Einwände.
           resetCustomerContext();
           return;
         }
@@ -721,7 +749,7 @@ export function SouffleurRoom({
     resetCustomerContext();
   }, [resetCustomerContext]);
 
-  // Auto-start mic when Souffleur opens — user expectation is "hört sofort mit"
+  // Auto-start mic when Souffleur opens — „hört sofort mit"
   useEffect(() => {
     const t = setTimeout(() => {
       startMic();
@@ -734,31 +762,46 @@ export function SouffleurRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── KI-Tipp (Haiku) — nur wenn Key konfiguriert ─────────────────
+  // ── Manueller KI-Tipp (Button) ──────────────────────────────────
   async function askAI() {
     setAiBusy(true);
     setAiLine(null);
     try {
-      // Bevorzugt Kunden-Transkript (Auto-Pfad sendet das auch), Fallback Mikro
-      const ctx = (custRef.current || transcript).slice(-700);
       const res = await fetch("/api/souffleur/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transcript: ctx,
+          history: historyRef.current.slice(-4),
+          transcript: (custRef.current || transcript).slice(-700),
           hook: lead.auditHook,
           company: lead.company,
           trade: lead.trade,
           tradeContext: tradeCard ? buildTradeContext(tradeCard) : null,
+          neinTyp: classifyNein(custRef.current.slice(-200)),
+          phase: phaseRef.current,
+          elapsedSec: elapsedRef.current,
+          repName: repNameRef.current.trim() || null,
         }),
       });
       const data = await res.json();
-      if (data.ok) setAiLine(data.line);
-      else setAiLine(data.message ?? "KI nicht konfiguriert (ANTHROPIC_API_KEY fehlt).");
+      if (data.ok) {
+        setAiLine(data.line);
+        if (isPhase(data.phase)) setPhase(data.phase);
+        setWhy(typeof data.why === "string" ? data.why : null);
+      } else {
+        setAiLine(data.message ?? "KI nicht konfiguriert (ANTHROPIC_API_KEY fehlt).");
+      }
     } catch {
       setAiLine("KI nicht erreichbar.");
     }
     setAiBusy(false);
+  }
+
+  // Wärme manuell setzen → sofort einen passenden Satz für die Phase holen.
+  function pickPhase(p: Phase) {
+    setPhase(p);
+    phaseRef.current = p;
+    if (aiReady) askAiNow();
   }
 
   function pickObjection(id: string) {
@@ -767,6 +810,7 @@ export function SouffleurRoom({
       setMove(m);
       setDetected(m.label);
       setAiLine(null);
+      setWhy(null);
     }
   }
 
@@ -784,8 +828,6 @@ export function SouffleurRoom({
         window.location.origin,
       );
     } catch {}
-    // Erst die Nachricht zustellen lassen, dann schließen — sonst kann
-    // window.close() den sendenden Context abreißen, bevor postMessage greift.
     setTimeout(() => window.close(), 60);
   }
 
@@ -820,6 +862,7 @@ export function SouffleurRoom({
           </button>
         </div>
       )}
+
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="flex items-center justify-between border-b border-[var(--color-hairline)] px-5 py-3">
         <div className="min-w-0">
@@ -870,11 +913,23 @@ export function SouffleurRoom({
       <div className="flex items-center gap-4 border-b border-[var(--color-hairline)] px-5 py-2">
         <ReadinessChip
           label="Mikro"
-          status={micStatus === "live" ? "on" : micStatus === "no-permission" || micStatus === "error" ? "error" : "off"}
+          status={
+            micStatus === "live"
+              ? "on"
+              : micStatus === "no-permission" || micStatus === "error"
+                ? "error"
+                : "off"
+          }
         />
         <ReadinessChip
           label="PC-Ton"
-          status={sysListening && dgStatus === "live" ? "on" : sysListening ? "warn" : "off"}
+          status={
+            sysListening && dgStatus === "live"
+              ? "on"
+              : sysListening
+                ? "warn"
+                : "off"
+          }
         />
         <ReadinessChip
           label="KI"
@@ -945,102 +1000,55 @@ export function SouffleurRoom({
         </div>
       )}
 
-      {/* ── Was JETZT sagen (groß) + Strategie (klein, Seite) ───── */}
+      {/* ── Hauptbühne: Wärme + ein Diktat-Satz ─────────────────── */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
-        {/* PRE-CALL-BRIEFING — was den Berater erwartet, damit er nur abliest */}
-        {briefingOpen ? (
-          <div className="mb-4 rounded-[16px] border border-[#cfe0fd] bg-[#f5f9ff] p-4">
-            <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#0a3977]">
-                Briefing · {lead.trade ?? "Betrieb"}
-                {lead.city ? ` · ${lead.city}` : ""} ·{" "}
-                {lead.website ? "hat Website" : "KEINE WEBSITE = heiß"}
+        {/* Gesprächswärme */}
+        <div className="mb-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-mute)]">
+              <Flame className="h-3.5 w-3.5 text-[var(--color-copper-500)]" />
+              Gesprächswärme
+            </span>
+            {why && (
+              <span className="truncate pl-3 text-[11.5px] text-[var(--color-fg-dim)]">
+                {why}
               </span>
-              <button
-                onClick={() => setBriefingOpen(false)}
-                className="text-[11px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
-              >
-                ausblenden
-              </button>
-            </div>
-            {lead.auditHook && (
-              <div className="mb-3 rounded-[10px] bg-white px-3 py-2 ring-1 ring-[#cfe0fd]">
-                <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#0a3977]">
-                  Konkreter Befund — im Gespräch fallenlassen
-                </span>
-                <p className="mt-0.5 text-[13px] font-medium leading-snug text-[var(--color-fg)]">
-                  {lead.auditHook}
-                </p>
-                {(() => {
-                  const ap = lead.auditPayload as {
-                    seo?: { score?: number } | null;
-                    lighthouse?: { seo?: number | null } | null;
-                  } | null;
-                  const parts: string[] = [];
-                  if (ap?.seo?.score != null) parts.push(`SEO-Check ${ap.seo.score}/100`);
-                  if (ap?.lighthouse?.seo != null)
-                    parts.push(`Lighthouse-SEO ${ap.lighthouse.seo}`);
-                  return parts.length ? (
-                    <p className="mt-1 text-[11px] text-[var(--color-fg-mute)]">
-                      {parts.join(" · ")}
-                    </p>
-                  ) : null;
-                })()}
-              </div>
             )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {tradeCard && (
-                <div>
-                  <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
-                    Wahrscheinliche Schmerzpunkte
-                  </div>
-                  <ul className="space-y-1">
-                    {tradeCard.painPoints.slice(0, 2).map((p, i) => (
-                      <li
-                        key={i}
-                        className="flex gap-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]"
-                      >
-                        <span className="mt-0.5 text-[var(--color-copper-500)]">▸</span>
-                        <span>{p}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div>
-                <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
-                  Womit er kommt → antippen für die Antwort
-                </div>
-                <div className="flex flex-col gap-1">
-                  {["no_time", "no_interest", lead.website ? "have_website" : "kumpel_macht", "price"]
-                    .map((id) => getMove(id))
-                    .filter((m): m is Move => !!m)
-                    .map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => pickObjection(m.id)}
-                        title={fillHook(m.line, lead.auditHook)}
-                        className="rounded-[8px] bg-white px-2.5 py-1.5 text-left text-[11.5px] font-medium text-[var(--color-fg-dim)] ring-1 ring-black/[0.04] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
-                      >
-                        „{m.label}"
-                      </button>
-                    ))}
-                </div>
-              </div>
-            </div>
           </div>
-        ) : (
-          <button
-            onClick={() => setBriefingOpen(true)}
-            className="mb-3 text-[11px] font-medium text-[var(--color-copper-600)] hover:underline"
-          >
-            + Briefing einblenden
-          </button>
-        )}
-        <div className="flex flex-col gap-4 md:flex-row">
+          <div className="flex gap-1.5">
+            {PHASES.map((p) => {
+              const active = p.key === phase;
+              return (
+                <button
+                  key={p.key}
+                  onClick={() => pickPhase(p.key)}
+                  className={cn(
+                    "flex-1 rounded-[10px] px-2.5 py-1.5 text-left transition",
+                    active
+                      ? PHASE_STYLE[p.key]
+                      : "bg-[var(--color-surface-2)] text-[var(--color-fg-mute)] hover:bg-[var(--color-surface-3)]",
+                  )}
+                  title={p.tagline}
+                >
+                  <div className="text-[12px] font-semibold">{p.label}</div>
+                  <div
+                    className={cn(
+                      "truncate text-[10px] leading-tight",
+                      active ? "opacity-90" : "opacity-70",
+                    )}
+                  >
+                    {p.tagline}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* DER Satz — wörtlich ablesen */}
         <div
           className={cn(
-            "flex-[1.8] min-w-0 rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500",
+            "rounded-[20px] bg-white p-6 shadow-[var(--shadow-2)] ring-1 transition-[box-shadow,--tw-ring-color] duration-500 md:p-8",
             aiLine
               ? "ring-[var(--color-copper-300)] shadow-[var(--shadow-copper)]"
               : "ring-black/[0.04]",
@@ -1071,285 +1079,36 @@ export function SouffleurRoom({
 
           <p
             key={aiLine ?? hookLine}
-            className="tip-enter mt-3 text-[26px] font-bold leading-[1.15] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[31px] md:text-[35px]"
+            className="tip-enter mt-3 text-[28px] font-bold leading-[1.12] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[34px] md:text-[40px]"
           >
             {aiLine ?? hookLine}
           </p>
 
           {!aiLine && move.alts.length > 0 && (
-            <div className="mt-4 space-y-1">
-              {move.alts.map((a, i) => (
-                <p key={i} className="text-[13px] leading-snug text-[var(--color-fg-mute)]">
-                  <span className="font-semibold">oder:</span> {a}
-                </p>
-              ))}
-            </div>
-          )}
-        </div>
-
-          {/* RECHTS — kleine Strategie-Spalte */}
-          <aside className="w-full shrink-0 space-y-2.5 md:w-[224px]">
-            <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
-              <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
-                Strategie
-              </div>
-              <div className="text-[12.5px] font-medium text-[var(--color-fg)]">
-                {aiLine ? "KI-Verfeinerung" : KIND_LABEL[move.kind]}
-              </div>
-              {detected && !aiLine && (
-                <div className="mt-0.5 text-[11px] text-[var(--color-fg-mute)]">
-                  erkannt: {detected}
-                </div>
-              )}
-              <button
-                onClick={askAI}
-                disabled={aiBusy}
-                className="mt-2 inline-flex items-center gap-1 rounded-full bg-[var(--color-copper-500)] px-2.5 py-1 text-[11px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-60"
-              >
-                <Sparkles className="h-3 w-3" />
-                {aiBusy ? "denkt…" : "KI verfeinern"}
-              </button>
-              <input
-                value={repName}
-                onChange={(e) => {
-                  setRepName(e.target.value);
-                  try {
-                    localStorage.setItem("aw_rep_name", e.target.value);
-                  } catch {}
-                }}
-                placeholder="Dein Name (für den Opener)"
-                className="mt-2 w-full rounded-[6px] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2 py-1 text-[11px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
-              />
-            </div>
-
-            {neinGradient && (
-              <div className="rounded-[12px] border border-[#fde0c8] bg-[#fff7ef] p-3">
-                <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#b25000]">
-                  Nein: {neinTyp} · {neinGradient.erfolgsquote}
-                </div>
-                <p className="text-[12px] leading-snug text-[#7a4a10]">
-                  {neinGradient.behandlung}
-                </p>
-              </div>
-            )}
-
-            <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
-              <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
-                Power-Frage → groß
-              </div>
-              <div className="flex flex-col gap-1">
-                {POWER_QUESTIONS.slice(0, 3).map((q) => (
-                  <button
-                    key={q.id}
-                    onClick={() => {
-                      setAiLine(fillTradeHook(q.question, lead.contactName, lead.city));
-                      setDetected(null);
-                    }}
-                    className="rounded-[8px] bg-[var(--color-surface-2)] px-2 py-1.5 text-left text-[11px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
-                  >
-                    {q.question}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </div>
-
-        {/* ── Ja-Leiter zum Termin (antippen → groß) ──────────── */}
-        <div className="mt-4">
-          <div className="rounded-[14px] border border-[var(--color-hairline)] bg-white p-4">
-            <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-mute)]">
-              Ja-Leiter zum Termin · antippen → groß
-            </div>
-            <ol className="flex flex-col gap-1">
-              {MICRO_COMMITMENTS.map((m) => (
-                <li key={m.stufe}>
-                  <button
-                    onClick={() => {
-                      setAiLine(fillTradeHook(m.phrase, lead.contactName, lead.city));
-                      setDetected(null);
-                    }}
-                    className="flex w-full items-start gap-2 rounded-[8px] px-2 py-1 text-left text-[12px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff]"
-                  >
-                    <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--color-copper-500)] text-[9px] font-bold text-white">
-                      {m.stufe}
-                    </span>
-                    <span>
-                      <span className="font-medium text-[var(--color-fg)]">{m.typ}:</span>{" "}
-                      {m.phrase}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </div>
-
-        {/* ── Branchen-Karte (wenn Trade erkannt) ─────────────── */}
-        {tradeCard && (
-          <div className="mt-5 rounded-[14px] border border-[var(--color-copper-100)] bg-[var(--color-copper-50)]/40 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Zap className="h-4 w-4 text-[var(--color-copper-600)]" />
-              <span className="text-[12px] font-semibold text-[var(--color-copper-700)]">
-                Branchen-Playbook: {tradeCard.label}
-              </span>
-            </div>
-
-            {/* Trade-spezifischer Hook */}
-            {tradeHook && move.id === "opener" && (
-              <div className="mb-3 rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
-                <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                  Branchen-Einstieg
-                </div>
-                <p className="text-[14px] font-medium leading-snug text-[var(--color-fg)]">
-                  {tradeHook}
-                </p>
-              </div>
-            )}
-
-            {/* Killer-Frage */}
-            <div className="mb-3 rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
-              <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                Killer-Frage
-              </div>
-              <p className="text-[13px] leading-snug text-[var(--color-fg-dim)]">
-                {tradeCard.killerQuestion}
-              </p>
-            </div>
-
-            {/* Pain Points + ROI in 2 Spalten */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
-                <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                  Pain Points
-                </div>
-                <ul className="space-y-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]">
-                  {tradeCard.painPoints.map((p, i) => (
-                    <li key={i} className="flex gap-1.5">
-                      <span className="mt-0.5 text-[var(--color-copper-500)]">
-                        {i + 1}.
-                      </span>
-                      <span>{p}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="space-y-3">
-                <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
-                  <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                    ROI-Argument
-                  </div>
-                  <p className="text-[12px] leading-snug text-[var(--color-fg-dim)]">
-                    {tradeCard.roiArgument}
-                  </p>
-                </div>
-                <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
-                  <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                    Saison-Timing
-                  </div>
-                  <p className="text-[11.5px] leading-snug text-[var(--color-fg-dim)]">
-                    <span className="font-medium">{tradeCard.seasonalTiming.bestMonths}:</span>{" "}
-                    {tradeCard.seasonalTiming.angle}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Test-Leiste ────────────────────────────────────────── */}
-        <div className="mt-5 rounded-[14px] border border-[#fde68a] bg-[#fffbeb] p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <TestTube className="h-4 w-4 text-[#b25000]" />
-              <span className="text-[12px] font-semibold text-[#7a5e1f]">
-                Test-Modus
-              </span>
-              {testActive && (
-                <span className="rounded-full bg-[#b25000] px-1.5 py-0.5 text-[10px] font-medium text-white">
-                  Skript {testStep} läuft
-                </span>
-              )}
-            </div>
-            {testActive && (
-              <button
-                onClick={stopTest}
-                className="text-[11.5px] font-medium text-[#b25000] hover:text-[#7a5e1f]"
-              >
-                Stoppen
-              </button>
-            )}
-          </div>
-          {testHint && (
-            <p className="mb-2 text-[12px] italic text-[#7a5e1f]">
-              {testHint}
+            <p className="mt-3 text-[14px] leading-snug text-[var(--color-fg-mute)]">
+              <span className="font-semibold">oder:</span> {move.alts[0]}
             </p>
           )}
-          <div className="flex flex-wrap items-center gap-2">
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 text-[11.5px] text-[var(--color-fg-mute)]">
             <button
-              onClick={() => startTest("vollDurchlauf")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
+              onClick={askAI}
+              disabled={aiBusy}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--color-copper-500)] px-3 py-1 text-[11.5px] font-medium text-white transition hover:bg-[#0077ed] disabled:opacity-60"
             >
-              ▶ Voll-Durchlauf
+              <Sparkles className="h-3 w-3" />
+              {aiBusy ? "denkt…" : "KI: neuer Satz"}
             </button>
-            <button
-              onClick={() => startTest("schwieriger")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Schwierig
-            </button>
-            <button
-              onClick={() => startTest("kurzeSession")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Kurz
-            </button>
-            <button
-              onClick={() => startTest("socialMedia")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Social-Media
-            </button>
-            <button
-              onClick={() => startTest("verbrannterKunde")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Verbrannter
-            </button>
-            <button
-              onClick={() => startTest("einzelkaempfer")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Einzelkämpfer
-            </button>
-            <button
-              onClick={() => startTest("vorwandKette")}
-              disabled={!!testActive}
-              className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
-            >
-              ▶ Vorwand-Kette
-            </button>
-            <label className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 ring-1 ring-[#fde68a]">
-              <input
-                type="checkbox"
-                checked={micAsCustomer}
-                onChange={(e) => setMicAsCustomer(e.target.checked)}
-                className="accent-[#b25000]"
-              />
-              <span className="text-[12px] font-medium text-[#7a5e1f]">
-                Mein Mikro = Kunde
+            {aiReady === false && (
+              <span className="text-[var(--color-fg-mute)]">
+                KI inaktiv — lokaler Tipp
               </span>
-            </label>
+            )}
+            {detected && !aiLine && <span>erkannt: {detected}</span>}
           </div>
         </div>
 
-        {/* ── SIP-Direktanruf (easybell im Browser) ──────────────── */}
+        {/* Anruf-Steuerung (Browser-Direktanruf) — immer gemountet für Auto-Dial */}
         <div className="mt-3">
           <SipDialer
             defaultNumber={lead.phone ?? ""}
@@ -1359,184 +1118,488 @@ export function SouffleurRoom({
           />
         </div>
 
-        {/* ── Schnell-Einwände ──────────────────────────────────── */}
-        <div className="mt-5">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-            Einwand antippen
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-            {QUICK_OBJECTIONS.map((id) => {
-              const m = getMove(id);
-              if (!m) return null;
-              const active = move.id === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => pickObjection(id)}
-                  className={cn(
-                    "rounded-[10px] px-2.5 py-2 text-left text-[12px] font-medium transition",
-                    active
-                      ? "bg-[var(--color-copper-500)] text-white"
-                      : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[var(--color-surface-3)]",
+        {/* ── Werkzeug-Schublade (eingeklappt = ruhige Bühne) ───── */}
+        <button
+          onClick={() => setToolsOpen((o) => !o)}
+          className="mt-4 inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--color-copper-600)] transition hover:text-[var(--color-copper-700)]"
+        >
+          <ChevronDown
+            className={cn("h-4 w-4 transition", toolsOpen ? "rotate-180" : "")}
+          />
+          Werkzeuge, Playbook &amp; Transkript
+        </button>
+
+        {toolsOpen && (
+          <div className="mt-3 space-y-5">
+            {/* Briefing */}
+            {briefingOpen ? (
+              <div className="rounded-[16px] border border-[#cfe0fd] bg-[#f5f9ff] p-4">
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-[#0a3977]">
+                    Briefing · {lead.trade ?? "Betrieb"}
+                    {lead.city ? ` · ${lead.city}` : ""} ·{" "}
+                    {lead.website ? "hat Website" : "KEINE WEBSITE = heiß"}
+                  </span>
+                  <button
+                    onClick={() => setBriefingOpen(false)}
+                    className="text-[11px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
+                  >
+                    ausblenden
+                  </button>
+                </div>
+                {lead.auditHook && (
+                  <div className="mb-3 rounded-[10px] bg-white px-3 py-2 ring-1 ring-[#cfe0fd]">
+                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#0a3977]">
+                      Konkreter Befund — im Gespräch fallenlassen
+                    </span>
+                    <p className="mt-0.5 text-[13px] font-medium leading-snug text-[var(--color-fg)]">
+                      {lead.auditHook}
+                    </p>
+                  </div>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {tradeCard && (
+                    <div>
+                      <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
+                        Wahrscheinliche Schmerzpunkte
+                      </div>
+                      <ul className="space-y-1">
+                        {tradeCard.painPoints.slice(0, 2).map((p, i) => (
+                          <li
+                            key={i}
+                            className="flex gap-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]"
+                          >
+                            <span className="mt-0.5 text-[var(--color-copper-500)]">
+                              ▸
+                            </span>
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── Abschluss-Techniken (bei Kaufsignal antippen) ─────── */}
-        <div className="mt-4">
-          <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-            Abschluss antippen → groß
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-            {CLOSING_TECHNIQUES.map((c) => (
+                  <div>
+                    <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--color-fg-mute)]">
+                      Womit er kommt → antippen für die Antwort
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      {[
+                        "no_time",
+                        "no_interest",
+                        lead.website ? "have_website" : "kumpel_macht",
+                        "price",
+                      ]
+                        .map((id) => getMove(id))
+                        .filter((m): m is Move => !!m)
+                        .map((m) => (
+                          <button
+                            key={m.id}
+                            onClick={() => pickObjection(m.id)}
+                            title={fillHook(m.line, lead.auditHook)}
+                            className="rounded-[8px] bg-white px-2.5 py-1.5 text-left text-[11.5px] font-medium text-[var(--color-fg-dim)] ring-1 ring-black/[0.04] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
+                          >
+                            „{m.label}"
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
               <button
-                key={c.id}
-                onClick={() => {
-                  setAiLine(c.line);
-                  setDetected(null);
-                }}
-                title={c.line}
-                className="rounded-[10px] bg-[#f0fdf4] px-2.5 py-2 text-left text-[12px] font-medium text-[#1a7f37] transition hover:bg-[#dcfce7]"
+                onClick={() => setBriefingOpen(true)}
+                className="text-[11px] font-medium text-[var(--color-copper-600)] hover:underline"
               >
-                {c.label}
+                + Briefing einblenden
               </button>
-            ))}
-          </div>
-        </div>
+            )}
 
-        {/* ── Redeanteil-Puls ──────────────────────────────────── */}
-        {(transcript.trim() || customerTranscript.trim()) &&
-          (() => {
-            const a = transcript.trim().length;
-            const b = customerTranscript.trim().length;
-            const total = a + b || 1;
-            const repShare = Math.round((a / total) * 100);
-            const tooMuch = repShare > 65;
-            return (
-              <div className="mt-5">
-                <div className="mb-1.5 flex items-center justify-between text-[10.5px] font-medium uppercase tracking-[0.06em]">
-                  <span className="text-[var(--color-fg-mute)]">Redeanteil</span>
+            {/* Berater-Name + Power-Fragen + Nein-Gradient */}
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+                <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                  Dein Name (für „[Name]")
+                </div>
+                <input
+                  value={repName}
+                  onChange={(e) => {
+                    setRepName(e.target.value);
+                    try {
+                      localStorage.setItem("aw_rep_name", e.target.value);
+                    } catch {}
+                  }}
+                  placeholder="z.B. Wesam"
+                  className="w-full rounded-[6px] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2 py-1 text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+                />
+              </div>
+
+              <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+                <div className="mb-1.5 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                  Power-Frage → groß
+                </div>
+                <div className="flex flex-col gap-1">
+                  {POWER_QUESTIONS.slice(0, 3).map((q) => (
+                    <button
+                      key={q.id}
+                      onClick={() => {
+                        setAiLine(
+                          fillTradeHook(q.question, lead.contactName, lead.city),
+                        );
+                        setDetected(null);
+                        setWhy(null);
+                      }}
+                      className="rounded-[8px] bg-[var(--color-surface-2)] px-2 py-1.5 text-left text-[11px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff] hover:text-[var(--color-copper-700)]"
+                    >
+                      {q.question}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {neinGradient ? (
+                <div className="rounded-[12px] border border-[#fde0c8] bg-[#fff7ef] p-3">
+                  <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#b25000]">
+                    Nein: {neinTyp} · {neinGradient.erfolgsquote}
+                  </div>
+                  <p className="text-[12px] leading-snug text-[#7a4a10]">
+                    {neinGradient.behandlung}
+                  </p>
+                </div>
+              ) : (
+                <div className="rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+                  <div className="mb-1 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                    Nein-Gradient
+                  </div>
+                  <p className="text-[11.5px] leading-snug text-[var(--color-fg-mute)]">
+                    Sobald ein „Nein" fällt, erscheint hier die passende
+                    Behandlung.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Ja-Leiter zum Termin */}
+            <div className="rounded-[14px] border border-[var(--color-hairline)] bg-white p-4">
+              <div className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--color-fg-mute)]">
+                Ja-Leiter zum Termin · antippen → groß
+              </div>
+              <ol className="flex flex-col gap-1">
+                {MICRO_COMMITMENTS.map((m) => (
+                  <li key={m.stufe}>
+                    <button
+                      onClick={() => {
+                        setAiLine(
+                          fillTradeHook(m.phrase, lead.contactName, lead.city),
+                        );
+                        setDetected(null);
+                        setWhy(null);
+                      }}
+                      className="flex w-full items-start gap-2 rounded-[8px] px-2 py-1 text-left text-[12px] leading-snug text-[var(--color-fg-dim)] transition hover:bg-[#eff5ff]"
+                    >
+                      <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--color-copper-500)] text-[9px] font-bold text-white">
+                        {m.stufe}
+                      </span>
+                      <span>
+                        <span className="font-medium text-[var(--color-fg)]">
+                          {m.typ}:
+                        </span>{" "}
+                        {m.phrase}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
+            {/* Branchen-Karte */}
+            {tradeCard && (
+              <div className="rounded-[14px] border border-[var(--color-copper-100)] bg-[var(--color-copper-50)]/40 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-[var(--color-copper-600)]" />
+                  <span className="text-[12px] font-semibold text-[var(--color-copper-700)]">
+                    Branchen-Playbook: {tradeCard.label}
+                  </span>
+                </div>
+                <div className="mb-3 rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
+                  <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                    Killer-Frage
+                  </div>
+                  <p className="text-[13px] leading-snug text-[var(--color-fg-dim)]">
+                    {tradeCard.killerQuestion}
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
+                    <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                      Pain Points
+                    </div>
+                    <ul className="space-y-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]">
+                      {tradeCard.painPoints.map((p, i) => (
+                        <li key={i} className="flex gap-1.5">
+                          <span className="mt-0.5 text-[var(--color-copper-500)]">
+                            {i + 1}.
+                          </span>
+                          <span>{p}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
+                    <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                      ROI-Argument
+                    </div>
+                    <p className="text-[12px] leading-snug text-[var(--color-fg-dim)]">
+                      {tradeCard.roiArgument}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Schnell-Einwände */}
+            <div>
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                Einwand antippen
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {QUICK_OBJECTIONS.map((id) => {
+                  const m = getMove(id);
+                  if (!m) return null;
+                  const active = move.id === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => pickObjection(id)}
+                      className={cn(
+                        "rounded-[10px] px-2.5 py-2 text-left text-[12px] font-medium transition",
+                        active
+                          ? "bg-[var(--color-copper-500)] text-white"
+                          : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[var(--color-surface-3)]",
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Abschluss-Techniken */}
+            <div>
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                Abschluss antippen → groß
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                {CLOSING_TECHNIQUES.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => {
+                      setAiLine(c.line);
+                      setDetected(null);
+                      setWhy(null);
+                    }}
+                    title={c.line}
+                    className="rounded-[10px] bg-[#f0fdf4] px-2.5 py-2 text-left text-[12px] font-medium text-[#1a7f37] transition hover:bg-[#dcfce7]"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Redeanteil */}
+            {(transcript.trim() || customerTranscript.trim()) &&
+              (() => {
+                const a = transcript.trim().length;
+                const b = customerTranscript.trim().length;
+                const total = a + b || 1;
+                const repShare = Math.round((a / total) * 100);
+                const tooMuch = repShare > 65;
+                return (
+                  <div>
+                    <div className="mb-1.5 flex items-center justify-between text-[10.5px] font-medium uppercase tracking-[0.06em]">
+                      <span className="text-[var(--color-fg-mute)]">
+                        Redeanteil
+                      </span>
+                      <span
+                        className={cn(
+                          "tabular",
+                          tooMuch
+                            ? "text-[var(--color-copper-600)]"
+                            : "text-[var(--color-fg-mute)]",
+                        )}
+                      >
+                        Du {repShare}% · Kunde {100 - repShare}%
+                      </span>
+                    </div>
+                    <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-500",
+                          tooMuch
+                            ? "bg-[var(--color-copper-500)]"
+                            : "bg-[var(--color-copper-300)]",
+                        )}
+                        style={{ width: `${repShare}%` }}
+                      />
+                    </div>
+                    {tooMuch && (
+                      <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--color-copper-600)]">
+                        <span className="breathe h-1.5 w-1.5 rounded-full bg-[var(--color-copper-500)]" />
+                        Lass ihn reden — stell eine Frage.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
+            {/* Transkripte */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-[14px] border-l-[3px] border-[var(--color-fg-mute)]/25 bg-[var(--color-surface-2)] p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                    Du · Mikro
+                  </span>
                   <span
                     className={cn(
-                      "tabular",
-                      tooMuch
-                        ? "text-[var(--color-copper-600)]"
-                        : "text-[var(--color-fg-mute)]",
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                      micStatus === "live"
+                        ? "bg-[#e6f7ea] text-[#1a7f37]"
+                        : micStatus === "no-permission" || micStatus === "error"
+                          ? "bg-[#ffeceb] text-[#d70015]"
+                          : "bg-[var(--color-surface-3)] text-[var(--color-fg-mute)]",
                     )}
                   >
-                    Du {repShare}% · Kunde {100 - repShare}%
+                    {micStatus === "live"
+                      ? "Deepgram aktiv"
+                      : micStatus === "no-permission"
+                        ? "Mikro blockiert"
+                        : micStatus === "no-key"
+                          ? "Key fehlt"
+                          : micStatus === "error"
+                            ? "Fehler"
+                            : "wartet"}
                   </span>
                 </div>
-                <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
-                  <div
-                    className={cn(
-                      "h-full transition-all duration-500",
-                      tooMuch
-                        ? "bg-[var(--color-copper-500)]"
-                        : "bg-[var(--color-copper-300)]",
-                    )}
-                    style={{ width: `${repShare}%` }}
-                  />
-                </div>
-                {tooMuch && (
-                  <p className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-[var(--color-copper-600)]">
-                    <span className="breathe h-1.5 w-1.5 rounded-full bg-[var(--color-copper-500)]" />
-                    Lass ihn reden — stell eine Frage.
+                {micError && (
+                  <p className="mb-2 rounded-md bg-[#fff0ef] px-2.5 py-1.5 text-[11.5px] leading-snug text-[#a40012]">
+                    {micError}
                   </p>
                 )}
+                <p className="max-h-24 overflow-y-auto text-[13px] leading-relaxed text-[var(--color-fg-dim)]">
+                  {transcript || (
+                    <span className="text-[var(--color-fg-faint)]">
+                      {micStatus === "live"
+                        ? "Sprich los — deine Worte erscheinen hier."
+                        : "»Mikro mithören« starten oder Mikrofon erlauben."}
+                    </span>
+                  )}
+                </p>
               </div>
-            );
-          })()}
 
-        {/* ── Transkripte: Du | Kunde ───────────────────────────── */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          {/* Du (Mikro via Deepgram) */}
-          <div className="rounded-[14px] border-l-[3px] border-[var(--color-fg-mute)]/25 bg-[var(--color-surface-2)] p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                Du · Mikro
-              </span>
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                  micStatus === "live"
-                    ? "bg-[#e6f7ea] text-[#1a7f37]"
-                    : micStatus === "no-permission" || micStatus === "error"
-                      ? "bg-[#ffeceb] text-[#d70015]"
-                      : "bg-[var(--color-surface-3)] text-[var(--color-fg-mute)]",
-                )}
-              >
-                {micStatus === "live"
-                  ? "Deepgram aktiv"
-                  : micStatus === "no-permission"
-                    ? "Mikro blockiert"
-                    : micStatus === "no-key"
-                      ? "Key fehlt"
-                      : micStatus === "error"
-                        ? "Fehler"
-                        : "wartet"}
-              </span>
+              <div className="rounded-[14px] border-l-[3px] border-[var(--color-copper-400)] bg-[var(--color-copper-50)]/30 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                    Kunde · PC-Ton
+                  </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                      dgStatus === "live"
+                        ? "bg-[#e6f7ea] text-[#1a7f37]"
+                        : "bg-[var(--color-surface-3)] text-[var(--color-fg-mute)]",
+                    )}
+                  >
+                    {dgStatus === "live"
+                      ? "Deepgram aktiv"
+                      : dgStatus === "no-key"
+                        ? "Key fehlt"
+                        : dgStatus === "error"
+                          ? "Fehler"
+                          : "—"}
+                  </span>
+                </div>
+                <p className="max-h-24 overflow-y-auto text-[13px] leading-relaxed text-[var(--color-fg-dim)]">
+                  {customerTranscript ||
+                    (dgStatus === "no-key" ? (
+                      <span className="text-[var(--color-fg-faint)]">
+                        PC-Ton wird gehört (Pegel unten), aber für die
+                        Wort-Transkription fehlt der DEEPGRAM_API_KEY.
+                      </span>
+                    ) : (
+                      <span className="text-[var(--color-fg-faint)]">
+                        „PC-Ton (Kunde)" starten — die Worte des Gegenübers
+                        steuern die Tipps.
+                      </span>
+                    ))}
+                </p>
+              </div>
             </div>
-            {micError && (
-              <p className="mb-2 rounded-md bg-[#fff0ef] px-2.5 py-1.5 text-[11.5px] leading-snug text-[#a40012]">
-                {micError}
-              </p>
-            )}
-            <p className="max-h-24 overflow-y-auto text-[13px] leading-relaxed text-[var(--color-fg-dim)]">
-              {transcript || (
-                <span className="text-[var(--color-fg-faint)]">
-                  {micStatus === "live"
-                    ? "Sprich los — deine Worte erscheinen hier."
-                    : "»Mikro mithören« starten oder Mikrofon erlauben."}
-                </span>
+
+            {/* Test-Modus */}
+            <div className="rounded-[14px] border border-[#fde68a] bg-[#fffbeb] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TestTube className="h-4 w-4 text-[#b25000]" />
+                  <span className="text-[12px] font-semibold text-[#7a5e1f]">
+                    Test-Modus
+                  </span>
+                  {testActive && (
+                    <span className="rounded-full bg-[#b25000] px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      Skript {testStep} läuft
+                    </span>
+                  )}
+                </div>
+                {testActive && (
+                  <button
+                    onClick={stopTest}
+                    className="text-[11.5px] font-medium text-[#b25000] hover:text-[#7a5e1f]"
+                  >
+                    Stoppen
+                  </button>
+                )}
+              </div>
+              {testHint && (
+                <p className="mb-2 text-[12px] italic text-[#7a5e1f]">
+                  {testHint}
+                </p>
               )}
-            </p>
-          </div>
-
-          {/* Kunde (PC-Ton via Deepgram) */}
-          <div className="rounded-[14px] border-l-[3px] border-[var(--color-copper-400)] bg-[var(--color-copper-50)]/30 p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                Kunde · PC-Ton
-              </span>
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                  dgStatus === "live"
-                    ? "bg-[#e6f7ea] text-[#1a7f37]"
-                    : "bg-[var(--color-surface-3)] text-[var(--color-fg-mute)]",
-                )}
-              >
-                {dgStatus === "live"
-                  ? "Deepgram aktiv"
-                  : dgStatus === "no-key"
-                    ? "Key fehlt"
-                    : dgStatus === "error"
-                      ? "Fehler"
-                      : "—"}
-              </span>
-            </div>
-            <p className="max-h-24 overflow-y-auto text-[13px] leading-relaxed text-[var(--color-fg-dim)]">
-              {customerTranscript ||
-                (dgStatus === "no-key" ? (
-                  <span className="text-[var(--color-fg-faint)]">
-                    PC-Ton wird gehört (Pegel unten), aber für die Wort-
-                    Transkription des Kunden fehlt der DEEPGRAM_API_KEY.
-                  </span>
-                ) : (
-                  <span className="text-[var(--color-fg-faint)]">
-                    „PC-Ton (Kunde)" starten — die Worte des Gegenübers
-                    erscheinen hier und steuern die Tipps.
-                  </span>
+              <div className="flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    ["vollDurchlauf", "Voll-Durchlauf"],
+                    ["schwieriger", "Schwierig"],
+                    ["kurzeSession", "Kurz"],
+                    ["socialMedia", "Social-Media"],
+                    ["verbrannterKunde", "Verbrannter"],
+                    ["einzelkaempfer", "Einzelkämpfer"],
+                    ["vorwandKette", "Vorwand-Kette"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => startTest(key)}
+                    disabled={!!testActive}
+                    className="rounded-full bg-white px-3 py-1.5 text-[12px] font-medium text-[#b25000] ring-1 ring-[#fde68a] transition hover:bg-[#fff5d6] disabled:opacity-50"
+                  >
+                    ▶ {label}
+                  </button>
                 ))}
-            </p>
+                <label className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-full bg-white px-3 py-1.5 ring-1 ring-[#fde68a]">
+                  <input
+                    type="checkbox"
+                    checked={micAsCustomer}
+                    onChange={(e) => setMicAsCustomer(e.target.checked)}
+                    className="accent-[#b25000]"
+                  />
+                  <span className="text-[12px] font-medium text-[#7a5e1f]">
+                    Mein Mikro = Kunde
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── Steuerleiste ────────────────────────────────────────── */}
@@ -1551,11 +1614,7 @@ export function SouffleurRoom({
                 : "bg-[var(--color-copper-500)] text-white hover:bg-[#0077ed]",
             )}
           >
-            {listening ? (
-              <MicOff className="h-4 w-4" />
-            ) : (
-              <Mic className="h-4 w-4" />
-            )}
+            {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
             {listening ? "Mikro stoppen" : "Mikro mithören"}
           </button>
           <Meter level={micLevel} on={listening} label="Du" />

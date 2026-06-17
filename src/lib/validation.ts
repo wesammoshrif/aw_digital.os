@@ -105,6 +105,10 @@ export const souffleurSuggestSchema = z.object({
   tradeContext: z.string().max(5000).nullable().optional(),
   neinTyp: z.string().max(60).nullable().optional(),
   phase: z.string().max(60).nullable().optional(),
+  // Phase 9: Gesprächs-Gedächtnis (letzte Kundenaussagen), Phasen-Hint, Berater-Name.
+  history: z.array(z.string().max(600)).max(8).optional(),
+  elapsedSec: z.number().int().min(0).max(36_000).optional(),
+  repName: z.string().max(80).nullable().optional(),
 });
 
 export const souffleurSummarySchema = z.object({

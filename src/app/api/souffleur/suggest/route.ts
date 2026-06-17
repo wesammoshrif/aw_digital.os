@@ -1,11 +1,13 @@
 /**
  * POST /api/souffleur/suggest
  *
- * Echtzeit-Souffleur-Verfeinerung via Claude Haiku.
- * Nur aktiv, wenn ANTHROPIC_API_KEY gesetzt ist — sonst freundlicher
- * 200-Hinweis (der lokale Matcher trägt den MVP ohne Key).
+ * Echtzeit-„Dirigent" via Claude Haiku: gibt dem Berater den EXAKTEN Satz vor,
+ * den er jetzt wörtlich sagen soll — UND bestimmt die Gesprächswärme (Phase).
+ * Nutzt das Gesprächs-Gedächtnis (letzte Kundenaussagen) + Branchen-Kontext +
+ * Nein-Typ + Phasen-Hint, damit der Tipp zur Lage passt statt generisch zu sein.
  *
- * Latenz-optimiert: kleines max_tokens, knapper Prompt, ein Satz.
+ * Nur aktiv mit ANTHROPIC_API_KEY — sonst freundlicher 200-Hinweis (der lokale
+ * Matcher trägt den MVP ohne Key).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,19 +17,26 @@ import {
   classifyNein,
   type NeinTyp,
 } from "@/lib/souffleur/strategies";
+import { PHASES, isPhase, phaseGuidance, type Phase } from "@/lib/souffleur/phases";
 import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 
-const SYSTEM = `Du bist ein Echtzeit-Verkaufs-Souffleur für Kalt-Akquise in Deutschland.
-Ein Solo-Berater verkauft Premium-Websites (~2.000 €) + Wartung an Handwerksbetriebe.
-Du bekommst das letzte Transkript des Gesprächs und ggf. branchenspezifischen Kontext.
-Nutze die Brancheninfos, um den Tipp passend zum Gewerk zu formulieren.
-Gib GENAU EINEN Satz zurück, den der Berater JETZT sagen soll — natürlich, konkret,
-auf Augenhöhe, kein Floskel-Deutsch, keine Anführungszeichen, keine Erklärung.
-Maximal 30 Wörter. Ziel jedes Anrufs: der nächste Schritt (Termin), nicht der Verkauf.
+const PHASE_MENU = PHASES.map((p) => `${p.key} (${p.tagline})`).join(" → ");
+
+const SYSTEM = `Du bist der Live-Dirigent für ein Verkaufs-Telefonat (Kalt-Akquise in Deutschland).
+Ein Solo-Berater verkauft Premium-Websites (~2.000 €) + Wartung an Handwerksbetriebe und liest WÖRTLICH ab, was du vorgibst.
+
+Deine Aufgabe pro Antwort:
+1) "line": Der EINE Satz, den der Berater JETZT sagen soll — natürlich, konkret, auf Augenhöhe, kein Floskel-Deutsch, keine Anführungszeichen, MAX 30 Wörter.
+2) "phase": Die aktuelle Gesprächswärme: ${PHASE_MENU}.
+3) "why": Max 6 Wörter, warum genau dieser Satz jetzt (für den Berater).
+
+Ziel jedes Anrufs ist der nächste Schritt (ein konkreter Termin), nicht der Verkauf.
 
 GOLDENE REGELN (immer einhalten):
-${GOLDEN_RULES.map((r) => `- ${r}`).join("\n")}`;
+${GOLDEN_RULES.map((r) => `- ${r}`).join("\n")}
+
+Antworte AUSSCHLIESSLICH als valides JSON: {"line": "...", "phase": "kalt|lau|warm|heiss", "why": "..."}.`;
 
 // GET: Verfügbarkeits-Check für den Readiness-Chip
 export async function GET(req: NextRequest) {
@@ -45,7 +54,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: false,
       message:
-        "KI-Souffleur inaktiv — ANTHROPIC_API_KEY in .env.local setzen, dann tippt Haiku live mit.",
+        "KI-Souffleur inaktiv — ANTHROPIC_API_KEY in .env.local setzen, dann diktiert Haiku live mit.",
     });
   }
 
@@ -61,39 +70,87 @@ export async function POST(req: NextRequest) {
       ? `\nBranchen-Kontext:\n${body.tradeContext}\n`
       : "";
 
-    // Nein-Gradient erkennen (Client kann vorgeben, sonst aus Transkript).
+    // Nein-Gradient (Client kann vorgeben, sonst aus Transkript).
     const neinTyp =
-      (body.neinTyp as NeinTyp | null) ?? classifyNein(body.transcript);
+      (body.neinTyp as NeinTyp | null) ?? classifyNein(body.transcript ?? "");
     const neinBlock = neinTyp
       ? `\nNein-Typ erkannt: ${neinTyp} → ${NEIN_GRADIENTEN.find((g) => g.typ === neinTyp)?.behandlung ?? ""}\n`
       : "";
-    const phaseBlock = body.phase ? `\nGesprächsphase: ${body.phase}\n` : "";
+
+    // Phasen-Hint + die Spielanweisung für genau diese Wärme.
+    const phaseHint: Phase = isPhase(body.phase) ? body.phase : "kalt";
+    const phaseBlock = `\nVermutete Gesprächswärme: ${phaseHint} → ${phaseGuidance(phaseHint)}\n`;
+    const timeBlock =
+      typeof body.elapsedSec === "number"
+        ? `\nGesprächsdauer: ${Math.floor(body.elapsedSec / 60)}:${String(body.elapsedSec % 60).padStart(2, "0")} min\n`
+        : "";
+
+    // Gesprächs-Gedächtnis: die letzten Kundenaussagen als Verlauf, damit die KI
+    // den Bogen sieht (nicht nur den letzten Wortfetzen).
+    const history =
+      Array.isArray(body.history) && body.history.length > 0
+        ? body.history
+            .slice(-4)
+            .map((h, i) => `${i + 1}. ${h}`)
+            .join("\n")
+        : (body.transcript ?? "").slice(-700);
+
+    const repNote = body.repName
+      ? `\nName des Beraters (in [Name] einsetzen): ${body.repName}\n`
+      : "";
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 80,
+      max_tokens: 200,
       system: SYSTEM,
       messages: [
         {
           role: "user",
           content: `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}
-Letztes Transkript: "${body.transcript ?? ""}"
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${timeBlock}${repNote}
+Letzte Kundenaussagen (Verlauf):
+${history}
 
-Der nächste Satz, den ich sagen soll:`,
+Gib NUR das JSON {"line","phase","why"}:`,
         },
       ],
     });
 
-    const line =
-      msg.content
-        .filter((c) => c.type === "text")
-        .map((c) => (c as { text: string }).text)
-        .join(" ")
-        .trim() || "Erzählen Sie mir kurz, wie Kunden Sie aktuell finden.";
+    const raw = msg.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as { text: string }).text)
+      .join(" ")
+      .trim();
 
-    return NextResponse.json({ ok: true, line });
+    const cleaned = raw.replace(/```(?:json)?/gi, "").trim();
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    const jsonStr =
+      start !== -1 && end > start ? cleaned.slice(start, end + 1) : cleaned;
+
+    let line = "";
+    let phase: Phase = phaseHint;
+    let why: string | null = null;
+    try {
+      const j = JSON.parse(jsonStr) as {
+        line?: unknown;
+        phase?: unknown;
+        why?: unknown;
+      };
+      if (typeof j.line === "string") line = j.line.trim();
+      if (isPhase(j.phase)) phase = j.phase;
+      if (typeof j.why === "string") why = j.why.trim().slice(0, 80);
+    } catch {
+      // Kein valides JSON → die Rohantwort als Satz nehmen (besser als nichts).
+      line = cleaned.replace(/^["']|["']$/g, "").trim();
+    }
+
+    if (!line) {
+      line = "Erzählen Sie mir kurz, wie Kunden Sie aktuell finden.";
+    }
+
+    return NextResponse.json({ ok: true, line, phase, why });
   } catch (err) {
     console.error("[souffleur/suggest]", err);
     return NextResponse.json(
