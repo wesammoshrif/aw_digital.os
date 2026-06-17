@@ -55,10 +55,12 @@ export function AgentReviewPanel({
   const [busy, setBusy] = useState(false);
   const [periodDays, setPeriodDays] = useState(30);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function generate() {
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch("/api/admin/agent-review", {
         method: "POST",
@@ -69,6 +71,11 @@ export function AgentReviewPanel({
       if (!res.ok || !data.ok) {
         setError(data?.message || data?.error || "Bewertung fehlgeschlagen.");
       } else {
+        setNotice(
+          data.generatedBy === "ai"
+            ? "KI-Bewertung erstellt."
+            : "Rechnerische Bewertung erstellt (kein KI-Key aktiv).",
+        );
         router.refresh();
       }
     } catch {
@@ -119,6 +126,11 @@ export function AgentReviewPanel({
         {error && (
           <p className="mt-3 rounded-[10px] bg-[#fff0ef] px-3 py-2 text-[12px] text-[var(--color-danger)]">
             {error}
+          </p>
+        )}
+        {notice && !error && (
+          <p className="mt-3 rounded-[10px] bg-[#e6f7ea] px-3 py-2 text-[12px] text-[#1a7f37]">
+            {notice}
           </p>
         )}
       </Card>

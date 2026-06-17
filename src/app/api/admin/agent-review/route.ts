@@ -12,6 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { requireAuth, parseJson, serverError } from "@/lib/api";
 import { getSessionUser, type SessionUser } from "@/lib/auth/session";
 import { withRls } from "@/lib/db/rls";
@@ -100,11 +101,12 @@ export async function POST(req: NextRequest) {
         .returning(),
     );
 
+    // metrics NICHT zurückgeben: recentCalls enthält PII-Transkripte, die der
+    // Client nicht braucht (die Seite zeigt nur aggregierte KPIs + die Bewertung).
     return NextResponse.json({
       ok: true,
       review: saved,
       generatedBy: draft.generatedBy,
-      metrics,
     });
   } catch (err) {
     return serverError("admin/agent-review:POST", err);
@@ -120,10 +122,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, reviews: [] });
   }
 
-  const agentId = req.nextUrl.searchParams.get("agentId");
-  if (!agentId) {
-    return NextResponse.json({ ok: false, error: "agentId fehlt." }, { status: 400 });
+  const rawId = req.nextUrl.searchParams.get("agentId");
+  const parsedId = z.string().uuid().safeParse(rawId);
+  if (!parsedId.success) {
+    return NextResponse.json(
+      { ok: false, error: "Ungültige agentId." },
+      { status: 400 },
+    );
   }
+  const agentId = parsedId.data;
 
   try {
     const { agentReviews } = await import("@/db/schema");
