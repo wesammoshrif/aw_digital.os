@@ -153,7 +153,8 @@ export function SouffleurRoom({
   const custRef = useRef(""); // rollendes Kunden-Transkript (für Matcher)
   const historyRef = useRef<string[]>([]); // letzte Kundenaussagen (für die KI)
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const aiGenRef = useRef(0); // Stale-Guard: nur die jüngste KI-Antwort gilt
+  const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage
+  const lastAppliedGenRef = useRef(0); // Nummer der zuletzt ANGEWENDETEN Antwort
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
   const phaseRef = useRef<Phase>("kalt");
@@ -365,7 +366,13 @@ export function SouffleurRoom({
     })
       .then((r) => r.json())
       .then((res) => {
-        if (gen !== aiGenRef.current || !res.ok) return;
+        if (!res.ok) return;
+        // Out-of-order-Schutz: anwenden, SOLANGE keine NEUERE Antwort schon
+        // angewendet wurde. (Vorher wurde verworfen, sobald eine neuere Anfrage
+        // nur STARTETE — dadurch landete bei Dauerrede des Kunden NIE ein Satz,
+        // weil immer eine neue Anfrage in-flight war = „hängt am Opener fest".)
+        if (gen < lastAppliedGenRef.current) return;
+        lastAppliedGenRef.current = gen;
         if (res.line) setAiLine(res.line);
         if (isPhase(res.phase)) setPhase(res.phase);
         setWhy(typeof res.why === "string" ? res.why : null);
@@ -700,6 +707,7 @@ export function SouffleurRoom({
     lastAiLenRef.current = 0;
     setCustomerTranscript("");
     aiGenRef.current++;
+    lastAppliedGenRef.current = aiGenRef.current; // in-flight Antworten verwerfen
     if (aiDebounceRef.current) {
       clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = null;
@@ -768,6 +776,9 @@ export function SouffleurRoom({
   async function askAI() {
     setAiBusy(true);
     setAiLine(null);
+    // Manuelle Anfrage hat Vorrang: neueste Generation beanspruchen, damit eine
+    // noch laufende Auto-Antwort das Ergebnis nicht überschreibt.
+    lastAppliedGenRef.current = ++aiGenRef.current;
     try {
       const res = await fetch("/api/souffleur/suggest", {
         method: "POST",
