@@ -837,8 +837,9 @@ export function SouffleurRoom({
       );
     } catch {}
     // 3. Erst schließen, wenn das BYE über die WSS-Verbindung raus ist
-    //    (Fenster-Close reißt sonst den Socket vor dem BYE ab).
-    setTimeout(() => window.close(), 280);
+    //    (Fenster-Close reißt sonst den Socket vor dem BYE ab). 500 ms gibt
+    //    auch bei höherer Latenz/CPU-Last Luft, damit kein verwaister Anruf bleibt.
+    setTimeout(() => window.close(), 500);
   }
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");

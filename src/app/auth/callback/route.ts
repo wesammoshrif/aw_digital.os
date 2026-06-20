@@ -16,7 +16,17 @@ import { ensureProfile } from "@/lib/auth/ensureProfile";
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
-  const next = url.searchParams.get("next") ?? "/";
+  // Open-Redirect-Schutz: nur INTERNE, absolute Pfade zulassen. Ein manipulierter
+  // Bestätigungslink (?next=//evil.com bzw. https://evil.com) darf einen frisch
+  // eingeloggten Nutzer NICHT auf eine Fremd-/Phishing-Seite umleiten.
+  const rawNext = url.searchParams.get("next") ?? "/";
+  const next =
+    rawNext.startsWith("/") &&
+    !rawNext.startsWith("//") &&
+    !rawNext.startsWith("/\\") &&
+    !rawNext.includes("://")
+      ? rawNext
+      : "/";
 
   if (!code) {
     return NextResponse.redirect(new URL("/login?error=missing_code", url.origin));

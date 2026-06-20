@@ -38,9 +38,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, mock: true });
   }
 
+  const leadId = body.leadId.trim();
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(leadId)) {
+    return NextResponse.json({ ok: false, error: "Ungültige Lead-ID" }, { status: 400 });
+  }
+
   try {
     const { db } = await import("@/db");
-    const { calls } = await import("@/db/schema");
+    const { calls, leads } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+
+    // IDOR-Schutz: Anruf nur an einen Lead hängen, der dem User gehört
+    // (Admin an alle). Insert läuft über Superuser-db (umgeht RLS).
+    const scope =
+      user.role === "admin"
+        ? eq(leads.id, leadId)
+        : and(eq(leads.id, leadId), eq(leads.ownerId, user.id));
+    const [owned] = await db.select({ id: leads.id }).from(leads).where(scope).limit(1);
+    if (!owned) {
+      return NextResponse.json({ ok: false, error: "Lead nicht gefunden." }, { status: 404 });
+    }
 
     const dispo =
       body.dispo && DISPO_VALUES.includes(body.dispo as Dispo)
@@ -49,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     await db.insert(calls).values({
       ownerId: user.id,
-      leadId: body.leadId.trim(),
+      leadId,
       ...(dispo ? { dispo } : {}),
       durationSec: body.durationSec ?? null,
       transcript: body.transcript ?? null,

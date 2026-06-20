@@ -51,7 +51,21 @@ export async function POST(
 
   try {
     const { db } = await import("@/db");
-    const { activities } = await import("@/db/schema");
+    const { activities, leads } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+
+    // IDOR-Schutz: Aktivität nur an einen Lead hängen, der dem User gehört
+    // (Admin darf an alle). Der Insert läuft über die Superuser-db (umgeht RLS),
+    // deshalb hier eine explizite Owner-Prüfung — sonst könnte ein Agent fremde
+    // (auch Admin-) Leads mit Aktivitäten verunreinigen.
+    const scope =
+      user.role === "admin"
+        ? eq(leads.id, leadId)
+        : and(eq(leads.id, leadId), eq(leads.ownerId, user.id));
+    const [owned] = await db.select({ id: leads.id }).from(leads).where(scope).limit(1);
+    if (!owned) {
+      return NextResponse.json({ ok: false, error: "Lead nicht gefunden." }, { status: 404 });
+    }
 
     const [newActivity] = await db
       .insert(activities)
