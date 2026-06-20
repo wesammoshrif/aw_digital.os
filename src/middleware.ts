@@ -13,7 +13,13 @@ import { createServerClient } from "@supabase/ssr";
  * Cron ist im matcher ausgenommen (schützt sich via CRON_SECRET).
  */
 
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth", "/api/auth"];
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/auth",
+  "/api/auth",
+];
 
 function isPublicPath(path: string): boolean {
   return PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + "/"));

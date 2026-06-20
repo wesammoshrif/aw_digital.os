@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Shield, LogOut, Users } from "lucide-react";
+import { Shield, LogOut, Users, KeyRound } from "lucide-react";
 
 type Me = {
   name: string | null;
@@ -57,6 +57,13 @@ export function UserMenu() {
           Team verwalten
         </Link>
       )}
+      <Link
+        href="/account/password"
+        className="mt-1 flex items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] font-medium text-[var(--color-fg-dim)] transition hover:bg-black/[0.04]"
+      >
+        <KeyRound className="h-3.5 w-3.5 text-[var(--color-fg-mute)]" />
+        Passwort ändern
+      </Link>
       <button
         onClick={logout}
         className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12.5px] text-[var(--color-fg-dim)] transition hover:bg-black/[0.04]"

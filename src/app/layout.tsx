@@ -31,7 +31,10 @@ export default async function RootLayout({
 }) {
   const path = (await headers()).get("x-pathname") ?? "";
   const isAuthPage =
-    path === "/login" || path === "/signup" || path === "/pending";
+    path === "/login" ||
+    path === "/signup" ||
+    path === "/pending" ||
+    path === "/forgot-password";
 
   // Nicht-eingeloggt regelt die Middleware (→ /login). Hier nur das
   // Pending-Gate: wer noch nicht freigegeben ist, sieht den Warte-Screen.
