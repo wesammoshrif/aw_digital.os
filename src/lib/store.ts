@@ -193,16 +193,56 @@ export async function callStats() {
   return { total, connected, connectRate, appointments, interested, avgDuration };
 }
 
-// Streak (current/record) für die Sidebar — eigene settings-Zeile des Nutzers.
-export async function getStreak(): Promise<{ current: number; record: number }> {
-  if (isMockMode) return { current: STREAK.current, record: STREAK.record };
-  return scoped({ current: 0, record: 0 }, async (tx) => {
+// Anruf-Rampe: Tagesziel startet bei `start` und steigt ab `anchor` alle
+// `interval` Tage um `step`, gedeckelt bei `max`. So „rechnet sich das
+// Tagesziel selbst" (wie im Settings-Text versprochen) — kein hardcoded Wert.
+type RampConfig = {
+  start: number;
+  step: number;
+  interval: number;
+  max: number;
+  startedAt: Date | null;
+};
+const DEFAULT_RAMP: RampConfig = {
+  start: 25,
+  step: 10,
+  interval: 14,
+  max: 100,
+  startedAt: null,
+};
+
+export function rampDailyTarget(ramp: RampConfig, anchor: Date, now: Date): number {
+  const days = Math.floor((now.getTime() - anchor.getTime()) / 86_400_000);
+  if (days <= 0) return ramp.start;
+  const steps = Math.floor(days / Math.max(1, ramp.interval));
+  return Math.min(ramp.max, ramp.start + steps * ramp.step);
+}
+
+// Streak (current/record) + Rampen-Konfig — eigene settings-Zeile des Nutzers.
+export async function getStreak(): Promise<{
+  current: number;
+  record: number;
+  ramp: RampConfig;
+}> {
+  if (isMockMode)
+    return { current: STREAK.current, record: STREAK.record, ramp: DEFAULT_RAMP };
+  return scoped({ current: 0, record: 0, ramp: DEFAULT_RAMP }, async (tx) => {
     try {
       const { settings } = await import("@/db/schema");
       const [s] = await tx.select().from(settings).limit(1);
-      return { current: s?.streakDays ?? 0, record: s?.streakRecord ?? 0 };
+      return {
+        current: s?.streakDays ?? 0,
+        record: s?.streakRecord ?? 0,
+        ramp: {
+          start: s?.rampStart ?? 25,
+          step: s?.rampStep ?? 10,
+          interval: s?.rampIntervalDays ?? 14,
+          max: s?.rampMax ?? 100,
+          startedAt: s?.rampStartedAt ?? null,
+        },
+      };
     } catch {
-      return { current: 0, record: 0 };
+      return { current: 0, record: 0, ramp: DEFAULT_RAMP };
     }
   });
 }
@@ -439,11 +479,19 @@ export async function dashboardSummary() {
   if (!isMockMode) {
     const s = await getStreak();
     const todayStr = now.toISOString().slice(0, 10);
-    const callsToday = await listCalls();
-    const todayProgress = callsToday.filter(
+    const allCalls = await listCalls();
+    const todayProgress = allCalls.filter(
       (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === todayStr,
     ).length;
-    streak = { current: s.current, record: s.record, todayProgress, todayTarget: 25 };
+    // Tagesziel aus der Rampe statt hardcoded 25. Anker = konfiguriertes
+    // Startdatum, sonst der erste Anruf des Nutzers, sonst heute (= Start 25).
+    const earliest = allCalls.reduce<Date | null>(
+      (min, c) => (c.startedAt && (!min || c.startedAt < min) ? c.startedAt : min),
+      null,
+    );
+    const anchor = s.ramp.startedAt ?? earliest ?? now;
+    const todayTarget = rampDailyTarget(s.ramp, anchor, now);
+    streak = { current: s.current, record: s.record, todayProgress, todayTarget };
   }
 
   return {
