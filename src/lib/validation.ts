@@ -109,6 +109,16 @@ export const souffleurSuggestSchema = z.object({
   history: z.array(z.string().max(600)).max(8).optional(),
   elapsedSec: z.number().int().min(0).max(36_000).optional(),
   repName: z.string().max(80).nullable().optional(),
+  // Phase 10: voller rundenbasierter Dialog (Berater + Kunde im Wechsel).
+  turns: z
+    .array(
+      z.object({
+        speaker: z.enum(["advisor", "customer"]),
+        text: z.string().max(2000),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 
 export const souffleurSummarySchema = z.object({

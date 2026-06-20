@@ -85,15 +85,18 @@ export async function POST(req: NextRequest) {
         ? `\nGesprächsdauer: ${Math.floor(body.elapsedSec / 60)}:${String(body.elapsedSec % 60).padStart(2, "0")} min\n`
         : "";
 
-    // Gesprächs-Gedächtnis: die letzten Kundenaussagen als Verlauf, damit die KI
-    // den Bogen sieht (nicht nur den letzten Wortfetzen).
-    const history =
-      Array.isArray(body.history) && body.history.length > 0
-        ? body.history
-            .slice(-4)
-            .map((h, i) => `${i + 1}. ${h}`)
+    // Voller Dialog-Verlauf (Berater + Kunde im Wechsel) — so versteht die KI den
+    // GESPRÄCHS-Bogen und antwortet auf den letzten Kunden-Redezug, nicht auf einen
+    // Wortfetzen. Fallback auf history/transcript für Alt-Clients.
+    const turns = Array.isArray(body.turns) ? body.turns.slice(-8) : [];
+    const dialog =
+      turns.length > 0
+        ? turns
+            .map((t) => `${t.speaker === "advisor" ? "Berater" : "Kunde"}: ${t.text}`)
             .join("\n")
-        : (body.transcript ?? "").slice(-700);
+        : Array.isArray(body.history) && body.history.length > 0
+          ? body.history.slice(-4).map((h) => `Kunde: ${h}`).join("\n")
+          : `Kunde: ${(body.transcript ?? "").slice(-700)}`;
 
     const repNote = body.repName
       ? `\nName des Beraters (in [Name] einsetzen): ${body.repName}\n`
@@ -101,18 +104,19 @@ export async function POST(req: NextRequest) {
 
     const msg = await client.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 200,
-      system: SYSTEM,
+      max_tokens: 120,
+      // System-Prompt cachen (5-Min-ephemeral) → schnellere + günstigere Folge-Calls.
+      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
           content: `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
 Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${timeBlock}${repNote}
-Letzte Kundenaussagen (Verlauf):
-${history}
+Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
+${dialog}
 
-Gib NUR das JSON {"line","phase","why"}:`,
+Der Kunde hat gerade ausgeredet. Gib NUR das JSON {"line","phase","why"} mit dem nächsten Satz, den der Berater jetzt sagen soll:`,
         },
       ],
     });

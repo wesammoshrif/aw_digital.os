@@ -108,6 +108,10 @@ export function SouffleurRoom({
   const [phase, setPhase] = useState<Phase>("kalt");
   const [why, setWhy] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // Gesprächs-Zustand für die Anzeige: wer ist dran / wartet die KI gerade aus.
+  const [convoState, setConvoState] = useState<
+    "warten" | "berater" | "kunde" | "denkt"
+  >("warten");
 
   // Berater-Name (einmal setzen, füllt „[Name]" in allen Sätzen → nur ablesen).
   const [repName, setRepName] = useState("");
@@ -159,6 +163,11 @@ export function SouffleurRoom({
   const elapsedRef = useRef(0);
   const phaseRef = useRef<Phase>("kalt");
   const repNameRef = useRef("");
+  // Phase 10: rundenbasierter Dialog. turnsRef = voller Verlauf (Berater + Kunde),
+  // lastSpeakerRef = wer zuletzt geredet hat. aiDebounceRef dient jetzt als
+  // Turn-End-Timer (700 ms Stille = Kunden-Redezug fertig → KI fragen).
+  const turnsRef = useRef<{ speaker: "advisor" | "customer"; text: string }[]>([]);
+  const lastSpeakerRef = useRef<"advisor" | "customer" | null>(null);
 
   const tradeCard = useMemo(() => getTradeCard(lead.trade), [lead.trade]);
   const tradeHook = useMemo(
@@ -294,6 +303,9 @@ export function SouffleurRoom({
             setTranscript((prev) => (prev + " " + text).slice(-1200));
             if (micAsCustomerRef.current) {
               onCustomerText(text, "Mikro-Test");
+            } else {
+              // Echtbetrieb: das eigene Mikro ist der Berater-Redezug.
+              onAdvisorText(text);
             }
           }
         } catch {
@@ -343,7 +355,38 @@ export function SouffleurRoom({
     setMicStatus("idle");
   }, []);
 
-  // ── KI-Dirigent fragen: gibt Satz + Phase + Begründung ──────────
+  // ── Einen Redezug protokollieren (gleiche Sprecher zusammenfassen) ──
+  const pushTurn = useCallback(
+    (speaker: "advisor" | "customer", text: string) => {
+      const turns = turnsRef.current;
+      const last = turns[turns.length - 1];
+      if (last && last.speaker === speaker) {
+        last.text = (last.text + " " + text).trim();
+      } else {
+        turns.push({ speaker, text: text.trim() });
+      }
+      if (turns.length > 14) turns.splice(0, turns.length - 14);
+    },
+    [],
+  );
+
+  // Berater-Text (eigenes Mikro): als Berater-Redezug merken, KI NICHT triggern.
+  const onAdvisorText = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      pushTurn("advisor", text);
+      lastSpeakerRef.current = "advisor";
+      setConvoState("berater");
+      // Berater redet → Kunde ist nicht mehr dran: Turn-End-Timer abbrechen.
+      if (aiDebounceRef.current) {
+        clearTimeout(aiDebounceRef.current);
+        aiDebounceRef.current = null;
+      }
+    },
+    [pushTurn],
+  );
+
+  // ── KI-Dirigent fragen: voller Dialog → nächster Satz + Phase + Begründung ──
   const askAiNow = useCallback(() => {
     lastAiLenRef.current = custRef.current.length;
     const gen = ++aiGenRef.current;
@@ -352,7 +395,7 @@ export function SouffleurRoom({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        history: historyRef.current.slice(-4),
+        turns: turnsRef.current.slice(-8),
         transcript: custRef.current.slice(-700),
         hook: lead.auditHook,
         company: lead.company,
@@ -366,32 +409,37 @@ export function SouffleurRoom({
     })
       .then((r) => r.json())
       .then((res) => {
-        if (!res.ok) return;
-        // Out-of-order-Schutz: anwenden, SOLANGE keine NEUERE Antwort schon
-        // angewendet wurde. (Vorher wurde verworfen, sobald eine neuere Anfrage
-        // nur STARTETE — dadurch landete bei Dauerrede des Kunden NIE ein Satz,
-        // weil immer eine neue Anfrage in-flight war = „hängt am Opener fest".)
+        if (!res.ok) {
+          setConvoState("warten");
+          return;
+        }
+        // Out-of-order-Schutz: anwenden, solange keine NEUERE Antwort schon
+        // angewendet wurde (die jüngste gewinnt).
         if (gen < lastAppliedGenRef.current) return;
         lastAppliedGenRef.current = gen;
         if (res.line) setAiLine(res.line);
         if (isPhase(res.phase)) setPhase(res.phase);
         setWhy(typeof res.why === "string" ? res.why : null);
+        setConvoState("warten");
       })
       .catch(() => {
-        /* lokaler Tipp bleibt stehen */
+        setConvoState("warten");
       });
   }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
 
-  // ── Gemeinsamer Kunden-Handler: Transkript + Matcher + KI ───────
+  // ── Kunden-Handler: Redezug protokollieren + Turn-Ende erkennen ──
   const onCustomerText = useCallback(
     (text: string, sourceLabel: string) => {
       if (!text.trim()) return;
       setCustomerTranscript((prev) => (prev + " " + text).slice(-1400));
       custRef.current = (custRef.current + " " + text).slice(-1600);
       historyRef.current = [...historyRef.current, text.trim()].slice(-6);
+      pushTurn("customer", text);
+      lastSpeakerRef.current = "customer";
+      setConvoState("kunde");
 
-      // 1. Sofort: lokaler Matcher (0 ms) auf dem rollenden Transkript —
-      //    fängt auch über zwei Deepgram-Chunks gesplittete Einwände.
+      // Sofortiger lokaler Cue (Matcher) WÄHREND der Kunde redet — überbrückt,
+      // bis die KI am Turn-Ende den echten Satz liefert.
       const mv = matchMove(custRef.current);
       if (mv) {
         setMove(mv);
@@ -406,16 +454,18 @@ export function SouffleurRoom({
         );
       }
 
-      // 2. KI verfeinert: SOFORT bei großem Zuwachs (neuer Satz, >150 Z.),
-      //    sonst 400 ms Debounce. Stale-Guard in askAiNow.
+      // Turn-Ende: erst wenn der Kunde ~700 ms NICHTS mehr sagt, ist sein
+      // Redezug fertig → KI mit dem VOLLEN Dialog fragen. Kurze Denkpausen
+      // mitten im Satz lösen so KEINE verfrühte Antwort aus.
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-      if (custRef.current.length - lastAiLenRef.current > 150) {
+      aiDebounceRef.current = setTimeout(() => {
+        aiDebounceRef.current = null;
+        if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
+        setConvoState("denkt");
         askAiNow();
-      } else {
-        aiDebounceRef.current = setTimeout(askAiNow, 400);
-      }
+      }, 700);
     },
-    [askAiNow],
+    [askAiNow, pushTurn],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
@@ -704,6 +754,8 @@ export function SouffleurRoom({
   const resetCustomerContext = useCallback(() => {
     custRef.current = "";
     historyRef.current = [];
+    turnsRef.current = [];
+    lastSpeakerRef.current = null;
     lastAiLenRef.current = 0;
     setCustomerTranscript("");
     aiGenRef.current++;
@@ -716,6 +768,7 @@ export function SouffleurRoom({
     setDetected(null);
     setWhy(null);
     setPhase("kalt");
+    setConvoState("warten");
   }, []);
 
   // ── Test-Modus: Skript-Anruf (fiktiver Kunde) ───────────────────
@@ -784,6 +837,7 @@ export function SouffleurRoom({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          turns: turnsRef.current.slice(-8),
           history: historyRef.current.slice(-4),
           transcript: (custRef.current || transcript).slice(-700),
           hook: lead.auditHook,
@@ -1086,6 +1140,23 @@ export function SouffleurRoom({
             <span className="rounded-full bg-[#0a3977] px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white">
               Jetzt wörtlich sagen
             </span>
+            {convoState === "kunde" && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1a7f37]">
+                <span className="breathe h-1.5 w-1.5 rounded-full bg-[#1a7f37]" />
+                Kunde spricht…
+              </span>
+            )}
+            {convoState === "denkt" && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-copper-600)]">
+                <span className="breathe h-1.5 w-1.5 rounded-full bg-[var(--color-copper-500)]" />
+                KI wertet aus…
+              </span>
+            )}
+            {convoState === "berater" && (
+              <span className="text-[11px] font-medium text-[var(--color-fg-mute)]">
+                Du sprichst
+              </span>
+            )}
             <button
               onClick={copyLine}
               className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-[var(--color-fg-mute)] hover:text-[var(--color-fg-dim)]"
