@@ -168,16 +168,6 @@ export function SouffleurRoom({
   // Turn-End-Timer (700 ms Stille = Kunden-Redezug fertig → KI fragen).
   const turnsRef = useRef<{ speaker: "advisor" | "customer"; text: string }[]>([]);
   const lastSpeakerRef = useRef<"advisor" | "customer" | null>(null);
-  // Spekulatives Vor-Generieren: während der Kunde redet, schon eine Antwort
-  // vorbereiten (NICHT anzeigen). Am Turn-Ende ist sie dann sofort da.
-  const specRef = useRef<{
-    line: string;
-    phase: Phase;
-    why: string | null;
-    atLen: number;
-    atTime: number;
-  } | null>(null);
-  const lastSpecAtRef = useRef(0);
 
   const tradeCard = useMemo(() => getTradeCard(lead.trade), [lead.trade]);
   const tradeHook = useMemo(
@@ -437,40 +427,6 @@ export function SouffleurRoom({
       });
   }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
 
-  // ── Spekulativ vor-generieren (während der Kunde redet) — speichert NUR in
-  //    specRef, zeigt NICHTS an. So ist am Turn-Ende oft schon eine Antwort da. ──
-  const askAiSpeculative = useCallback(() => {
-    const atLen = custRef.current.length;
-    fetch("/api/souffleur/suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        turns: turnsRef.current.slice(-8),
-        transcript: custRef.current.slice(-700),
-        hook: lead.auditHook,
-        company: lead.company,
-        trade: lead.trade,
-        tradeContext: tradeCard ? buildTradeContext(tradeCard) : null,
-        neinTyp: classifyNein(custRef.current.slice(-200)),
-        phase: phaseRef.current,
-        elapsedSec: elapsedRef.current,
-        repName: repNameRef.current.trim() || null,
-      }),
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!res.ok || !res.line) return;
-        specRef.current = {
-          line: res.line,
-          phase: isPhase(res.phase) ? res.phase : phaseRef.current,
-          why: typeof res.why === "string" ? res.why : null,
-          atLen,
-          atTime: Date.now(),
-        };
-      })
-      .catch(() => {});
-  }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
-
   // ── Kunden-Handler: Redezug protokollieren + Turn-Ende erkennen ──
   const onCustomerText = useCallback(
     (text: string, sourceLabel: string) => {
@@ -482,8 +438,7 @@ export function SouffleurRoom({
       lastSpeakerRef.current = "customer";
       setConvoState("kunde");
 
-      // Sofortiger lokaler Cue (Matcher) WÄHREND der Kunde redet — überbrückt,
-      // bis die KI am Turn-Ende den echten Satz liefert.
+      // Sofortiger lokaler Cue (Matcher), während der Kunde redet.
       const mv = matchMove(custRef.current);
       if (mv) {
         setMove(mv);
@@ -498,40 +453,18 @@ export function SouffleurRoom({
         );
       }
 
-      // Vorausschau: gedrosselt (max 1×/1,2 s, genug Kontext) schon eine Antwort
-      // vorbereiten, während der Kunde noch redet → am Turn-Ende sofort verfügbar.
-      if (Date.now() - lastSpecAtRef.current > 1200 && custRef.current.length > 40) {
-        lastSpecAtRef.current = Date.now();
-        askAiSpeculative();
-      }
-
-      // Turn-Ende: erst wenn der Kunde ~700 ms NICHTS mehr sagt, ist sein
-      // Redezug fertig. Kurze Denkpausen mitten im Satz lösen KEINE Antwort aus.
+      // Turn-Ende: ~500 ms Stille = Redezug fertig → GENAU EINE KI-Anfrage mit
+      // dem vollen Dialog. (Eine Anfrage pro Redezug — kein Verstopfen, kein
+      // nachträgliches Austauschen des Satzes.)
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = setTimeout(() => {
         aiDebounceRef.current = null;
         if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
-
-        // Liegt eine FRISCHE Vorausschau vor (jung + fast vollständiger Kontext)?
-        // → sofort anzeigen. Dann immer mit dem vollen Turn verfeinern (latest-wins).
-        const spec = specRef.current;
-        const fresh =
-          !!spec &&
-          Date.now() - spec.atTime < 3500 &&
-          custRef.current.length - spec.atLen < 80;
-        if (fresh && spec) {
-          lastAppliedGenRef.current = ++aiGenRef.current;
-          setAiLine(spec.line);
-          setPhase(spec.phase);
-          setWhy(spec.why);
-          setConvoState("warten");
-        } else {
-          setConvoState("denkt");
-        }
+        setConvoState("denkt");
         askAiNow();
-      }, 700);
+      }, 500);
     },
-    [askAiNow, askAiSpeculative, pushTurn],
+    [askAiNow, pushTurn],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
@@ -822,8 +755,6 @@ export function SouffleurRoom({
     historyRef.current = [];
     turnsRef.current = [];
     lastSpeakerRef.current = null;
-    specRef.current = null;
-    lastSpecAtRef.current = 0;
     lastAiLenRef.current = 0;
     setCustomerTranscript("");
     aiGenRef.current++;
