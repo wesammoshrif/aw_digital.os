@@ -28,22 +28,23 @@ export function UserMenu() {
     router.refresh();
   }
 
-  if (!me) return null;
-  const isAdmin = me.role === "admin";
+  // Logout MUSS immer verfügbar sein — auch wenn /api/auth/me (noch) nichts
+  // liefert. Nutzer-Infos sind dann nur optional.
+  const isAdmin = me?.role === "admin";
 
   return (
     <div className="rounded-[var(--radius-lg)] bg-white/70 p-3 shadow-[var(--shadow-1)] ring-1 ring-black/[0.04]">
       <div className="flex items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-copper-500)] text-[11px] font-semibold text-[var(--color-ink)]">
-          {(me.name ?? me.email).slice(0, 1).toUpperCase()}
+          {(me?.name ?? me?.email ?? "?").slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-medium text-[var(--color-fg)]">
-            {me.name ?? me.email}
+            {me?.name ?? me?.email ?? "Angemeldet"}
           </div>
           <div className="flex items-center gap-1 text-[10.5px] text-[var(--color-fg-mute)]">
             {isAdmin && <Shield className="h-3 w-3 text-[var(--color-copper-500)]" />}
-            {isAdmin ? "Admin" : "Mitarbeiter"}
+            {isAdmin ? "Admin" : me ? "Mitarbeiter" : ""}
           </div>
         </div>
       </div>
