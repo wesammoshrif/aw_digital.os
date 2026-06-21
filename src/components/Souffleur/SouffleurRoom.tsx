@@ -157,8 +157,7 @@ export function SouffleurRoom({
   const custRef = useRef(""); // rollendes Kunden-Transkript (für Matcher)
   const historyRef = useRef<string[]>([]); // letzte Kundenaussagen (für die KI)
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage
-  const lastAppliedGenRef = useRef(0); // Nummer der zuletzt ANGEWENDETEN Antwort
+  const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
   const phaseRef = useRef<Phase>("kalt");
@@ -386,11 +385,12 @@ export function SouffleurRoom({
     [pushTurn],
   );
 
-  // ── KI-Dirigent fragen: voller Dialog → nächster Satz + Phase + Begründung ──
+  // ── KI-Dirigent fragen: STREAMING — der Satz fließt Wort für Wort rein. ──
   const askAiNow = useCallback(() => {
     lastAiLenRef.current = custRef.current.length;
     const gen = ++aiGenRef.current;
     const nein = classifyNein(custRef.current.slice(-200));
+    setWhy(null);
     fetch("/api/souffleur/suggest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -407,23 +407,44 @@ export function SouffleurRoom({
         repName: repNameRef.current.trim() || null,
       }),
     })
-      .then((r) => r.json())
-      .then((res) => {
-        if (!res.ok) {
-          setConvoState("warten");
+      .then(async (res) => {
+        // Kein Key / Fehler → JSON statt Stream.
+        if ((res.headers.get("content-type") || "").includes("application/json")) {
+          await res.json().catch(() => {});
+          if (gen === aiGenRef.current) setConvoState("warten");
           return;
         }
-        // Out-of-order-Schutz: anwenden, solange keine NEUERE Antwort schon
-        // angewendet wurde (die jüngste gewinnt).
-        if (gen < lastAppliedGenRef.current) return;
-        lastAppliedGenRef.current = gen;
-        if (res.line) setAiLine(res.line);
-        if (isPhase(res.phase)) setPhase(res.phase);
-        setWhy(typeof res.why === "string" ? res.why : null);
-        setConvoState("warten");
+        const reader = res.body?.getReader();
+        if (!reader) {
+          if (gen === aiGenRef.current) setConvoState("warten");
+          return;
+        }
+        const decoder = new TextDecoder();
+        let acc = "";
+        let started = false;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // Neuere Anfrage gestartet → diesen Stream verwerfen (latest-wins).
+          if (gen !== aiGenRef.current) {
+            try {
+              await reader.cancel();
+            } catch {}
+            return;
+          }
+          acc += decoder.decode(value, { stream: true });
+          if (acc.trim()) {
+            if (!started) {
+              started = true;
+              setConvoState("warten"); // erstes Wort da → „KI wertet aus" weg
+            }
+            setAiLine(acc);
+          }
+        }
+        if (gen === aiGenRef.current) setConvoState("warten");
       })
       .catch(() => {
-        setConvoState("warten");
+        if (gen === aiGenRef.current) setConvoState("warten");
       });
   }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
 
@@ -757,8 +778,7 @@ export function SouffleurRoom({
     lastSpeakerRef.current = null;
     lastAiLenRef.current = 0;
     setCustomerTranscript("");
-    aiGenRef.current++;
-    lastAppliedGenRef.current = aiGenRef.current; // in-flight Antworten verwerfen
+    aiGenRef.current++; // laufende Streams verwerfen (gen !== aiGenRef)
     if (aiDebounceRef.current) {
       clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = null;
@@ -827,17 +847,14 @@ export function SouffleurRoom({
   // ── Manueller KI-Tipp (Button) ──────────────────────────────────
   async function askAI() {
     setAiBusy(true);
-    setAiLine(null);
-    // Manuelle Anfrage hat Vorrang: neueste Generation beanspruchen, damit eine
-    // noch laufende Auto-Antwort das Ergebnis nicht überschreibt.
-    lastAppliedGenRef.current = ++aiGenRef.current;
+    setWhy(null);
+    const gen = ++aiGenRef.current; // beansprucht die neueste Generation
     try {
       const res = await fetch("/api/souffleur/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           turns: turnsRef.current.slice(-8),
-          history: historyRef.current.slice(-4),
           transcript: (custRef.current || transcript).slice(-700),
           hook: lead.auditHook,
           company: lead.company,
@@ -849,13 +866,28 @@ export function SouffleurRoom({
           repName: repNameRef.current.trim() || null,
         }),
       });
-      const data = await res.json();
-      if (data.ok) {
-        setAiLine(data.line);
-        if (isPhase(data.phase)) setPhase(data.phase);
-        setWhy(typeof data.why === "string" ? data.why : null);
-      } else {
+      if ((res.headers.get("content-type") || "").includes("application/json")) {
+        const data = await res.json();
         setAiLine(data.message ?? "KI nicht konfiguriert (ANTHROPIC_API_KEY fehlt).");
+        setAiBusy(false);
+        return;
+      }
+      const reader = res.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        let acc = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (gen !== aiGenRef.current) {
+            try {
+              await reader.cancel();
+            } catch {}
+            break;
+          }
+          acc += decoder.decode(value, { stream: true });
+          if (acc.trim()) setAiLine(acc);
+        }
       }
     } catch {
       setAiLine("KI nicht erreichbar.");
@@ -1172,10 +1204,7 @@ export function SouffleurRoom({
             </button>
           </div>
 
-          <p
-            key={aiLine ?? hookLine}
-            className="tip-enter mt-3 text-[28px] font-bold leading-[1.12] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[34px] md:text-[40px]"
-          >
+          <p className="mt-3 text-[28px] font-bold leading-[1.12] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[34px] md:text-[40px]">
             {aiLine ?? hookLine}
           </p>
 
