@@ -12,12 +12,22 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# NEXT_PUBLIC_* werden ins Browser-Bundle gebacken → MUSS schon beim Build da
+# NEXT_PUBLIC_* werden ins Browser-Bundle gebacken → MÜSSEN schon beim Build da
 # sein. Alle Server-/DB-Seiten sind force-dynamic, daher braucht der Build KEIN
-# DATABASE_URL und keine Secrets.
+# DATABASE_URL und keine echten Secrets — ABER der Browser-Supabase-Client
+# (src/lib/supabase/client.ts) liest die zwei NEXT_PUBLIC_SUPABASE_*-Werte zur
+# Build-Zeit. Fehlen sie hier, ist der Login im Browser tot (undefined).
+# Der Anon-/Publishable-Key ist fürs Frontend gedacht → darf ins Image.
 ARG NEXT_PUBLIC_DB_CONNECTED=true
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_DB_CONNECTED=$NEXT_PUBLIC_DB_CONNECTED
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_TELEMETRY_DISABLED=1
+# Heap deckeln: VPS hat 7,8 GB RAM + 2 GB Swap und bedient parallel die
+# Live-Kontaktformulare — verhindert, dass ein Build-Peak den OOM-Killer triggert.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # 3) Runtime (nur das Nötigste)

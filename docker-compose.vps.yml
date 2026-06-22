@@ -1,0 +1,51 @@
+# AW Digital OS — Deploy auf dem Hostinger-VPS, der SCHON einen Nginx auf
+# 80/443 betreibt (Kontaktformular-Backend). Darum KEIN eigener Caddy hier:
+# die App lauscht nur lokal auf 127.0.0.1:3000, der vorhandene System-Nginx
+# bekommt einen zusätzlichen vhost os.awcode.de → 127.0.0.1:3000 (+ certbot).
+#
+# Start:  docker compose -f docker-compose.vps.yml up -d --build
+# Secrets liegen in einer .env NEBEN dieser Datei (chmod 600, NICHT committen!).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # NEXT_PUBLIC_* werden ins Browser-Bundle gebacken → müssen schon beim
+        # Build da sein. Compose interpoliert ${...} aus der .env daneben.
+        NEXT_PUBLIC_DB_CONNECTED: "true"
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    image: aw-digital-os:latest
+    restart: unless-stopped
+    env_file: .env
+    # NUR an localhost binden — der System-Nginx macht den öffentlichen Zugang.
+    ports:
+      - "127.0.0.1:3000:3000"
+    logging: *default-logging
+
+  # Cron-Sidecar: ruft stündlich /api/cron/tick (Termin-Erinnerungen).
+  cron:
+    image: alpine:3
+    restart: unless-stopped
+    env_file: .env # liest CRON_SECRET
+    depends_on:
+      - app
+    logging: *default-logging
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache curl >/dev/null 2>&1
+        echo "[cron] gestartet — Tick jede Stunde"
+        while true; do
+          sleep 3600
+          curl -s -m 30 -X POST -H "x-cron-secret: $$CRON_SECRET" \
+            http://app:3000/api/cron/tick >/dev/null 2>&1 || true
+        done
