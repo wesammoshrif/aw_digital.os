@@ -169,13 +169,6 @@ export function SouffleurRoom({
   const lastSpeakerRef = useRef<"advisor" | "customer" | null>(null);
 
   const tradeCard = useMemo(() => getTradeCard(lead.trade), [lead.trade]);
-  const tradeHook = useMemo(
-    () =>
-      tradeCard
-        ? fillTradeHook(tradeCard.hookSatz, lead.contactName, lead.city)
-        : null,
-    [tradeCard, lead.contactName, lead.city],
-  );
 
   // „[Name]" füllen (Berater-Name) bzw. als klaren Lese-Cue lassen.
   const fillName = useCallback(
@@ -184,17 +177,18 @@ export function SouffleurRoom({
   );
 
   const hookLine = useMemo(() => {
-    if (move.id === "opener" && tradeHook) {
-      return fillName(tradeHook);
-    }
-    let base = move.line;
+    // Opener = kurzer, EHRLICHER Teaser: WER (AW Digital, Websites für Handwerker
+    // — als „Webdesign" verpackt) + WORUM (kostet Sie Aufträge) + kleine Bitte.
+    // Bewusst OHNE den langen Branchen-/Audit-Befund: der kommt erst, wenn der
+    // Kunde „ja, 30 Sekunden" sagt. Sonst rätselt der Kunde am Anfang → nervt.
     if (move.id === "opener") {
-      base = lead.website
-        ? "Guten Tag, hier ist [Name] von AW Digital. Ich habe mir kurz Ihre Website angesehen — {hook} Haben Sie 60 Sekunden?"
-        : "Guten Tag, hier ist [Name] von AW Digital. Ich habe geschaut, wie Ihr Betrieb online zu finden ist — {hook} Haben Sie 60 Sekunden?";
+      const base = lead.website
+        ? "Guten Tag, [Name] von AW Digital — wir machen Websites für Handwerksbetriebe. Ich war kurz auf Ihrer Seite, da ist mir was aufgefallen, das Sie Aufträge kostet. Haben Sie 30 Sekunden?"
+        : "Guten Tag, [Name] von AW Digital — wir machen Websites für Handwerksbetriebe. Ihr Betrieb ist online kaum zu finden, und genau das kostet Sie Aufträge. Haben Sie 30 Sekunden?";
+      return fillName(base);
     }
-    return fillName(fillHook(base, lead.auditHook));
-  }, [move, lead.auditHook, lead.website, tradeHook, fillName]);
+    return fillName(fillHook(move.line, lead.auditHook));
+  }, [move, lead.auditHook, lead.website, fillName]);
 
   // Nein-Gradient aus dem letzten Kunden-Satz (für das Coach-Panel).
   const neinTyp = useMemo(

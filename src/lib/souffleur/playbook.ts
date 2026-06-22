@@ -39,10 +39,10 @@ export const PLAYBOOK: Move[] = [
     kind: "opener",
     label: "Eröffnung",
     trigger: /\b(hallo|guten tag|ja bitte|am apparat|firma|spreche|wer ist da)\b/i,
-    line: "Guten Tag, hier ist [Name] von AW Digital. Ich habe mir kurz Ihre Website angesehen — {hook} Haben Sie 60 Sekunden?",
+    line: "Guten Tag, [Name] von AW Digital — wir machen Websites für Handwerksbetriebe. Bei Ihrem Online-Auftritt ist mir was aufgefallen, das Sie Aufträge kostet. Haben Sie 30 Sekunden?",
     alts: [
-      "Ich mach's kurz: Mir ist an Ihrer Website ein Punkt aufgefallen, der Sie täglich Anfragen kostet. Darf ich?",
-      "Ich rufe an, weil ich glaube, dass Sie online mehr aus Ihrem Betrieb holen können. 30 Sekunden?",
+      "[Name] von AW Digital, ganz kurz: Es geht um Ihre Website — da ist ein Punkt, der Sie täglich Anfragen kostet. 30 Sekunden?",
+      "[Name] von AW Digital, wir bauen Websites für Betriebe wie Ihren. Darf ich Ihnen in 30 Sekunden sagen, was mir an Ihrem Auftritt aufgefallen ist?",
     ],
   },
 
