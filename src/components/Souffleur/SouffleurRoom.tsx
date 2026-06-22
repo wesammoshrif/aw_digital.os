@@ -15,6 +15,7 @@ import {
   Zap,
   Flame,
   ChevronDown,
+  Headphones,
 } from "lucide-react";
 import type { Lead } from "@/db/schema";
 import {
@@ -67,10 +68,16 @@ const PHASE_STYLE: Record<Phase, string> = {
   heiss: "bg-[#ffeceb] text-[#d70015] ring-1 ring-[#ffb3ae]",
 };
 
-// Deepgram-Stream-URL: endpointing=300 wartet ~300 ms Sprechpause ab → ganze
-// Sätze statt zerbrochener Fragmente (deutlich treffsicherer Matcher + KI).
+// Deepgram-Stream-URL.
+//  - model=nova-3: bestes DE-Telefon-Modell (~21 % weniger Fehler als nova-2,
+//    für noisy/Telefon-Audio empfohlen; verifiziert: nova-3-general kann de+streaming).
+//  - endpointing=500: 500 ms Sprechpause = Satzende (Denkpausen ≠ Gesprächsende;
+//    der rundenbasierte Turn-Timer wartet ebenfalls ~500 ms).
+//  - encoding/sample_rate werden BEWUSST NICHT gesetzt: das Audio ist
+//    webm/opus-containerisiert, Deepgram liest den Header selbst (Setzen würde
+//    den Stream zerschießen).
 const DG_URL =
-  "wss://api.deepgram.com/v1/listen?model=nova-2&language=de&interim_results=true&endpointing=300&smart_format=true&punctuate=true";
+  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=500&smart_format=true&punctuate=true";
 
 export function SouffleurRoom({
   lead,
@@ -218,9 +225,13 @@ export function SouffleurRoom({
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          // Echo-Unterdrückung AN (gegen Lautsprecher-Bleed), aber
+          // noiseSuppression + autoGainControl AUS: aggressives NS/AGC frisst
+          // Wortanfänge/Konsonanten und lässt den Pegel pumpen — Deepgram
+          // erkennt rohes Audio deutlich zuverlässiger.
           echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+          noiseSuppression: false,
+          autoGainControl: false,
         },
       });
     } catch (err: unknown) {
@@ -1224,6 +1235,18 @@ export function SouffleurRoom({
             )}
             {detected && !aiLine && <span>erkannt: {detected}</span>}
           </div>
+        </div>
+
+        {/* Headset-Pflicht: ohne Headset läuft die Kundenstimme aus dem
+            Lautsprecher zurück ins Mikro → Echo auf BEIDEN Seiten + matschige
+            Erkennung. Das ist die häufigste „Ton kacke"-Ursache. */}
+        <div className="mt-3 flex items-start gap-2 rounded-[12px] bg-[#fff7ed] px-3.5 py-2.5 ring-1 ring-[#fdba74]">
+          <Headphones className="mt-0.5 h-4 w-4 shrink-0 text-[#c2410c]" />
+          <p className="text-[12.5px] leading-snug text-[#9a3412]">
+            <span className="font-semibold">Headset benutzen.</span> Ohne Headset
+            hört der Kunde sich selbst (Echo) und die Spracherkennung wird matschig
+            — nie über Laptop-Lautsprecher telefonieren.
+          </p>
         </div>
 
         {/* Anruf-Steuerung (Browser-Direktanruf) — immer gemountet für Auto-Dial */}
