@@ -1,9 +1,44 @@
 # AW Digital OS — Handoff-Bericht
 
-_Übergabe-Dokument für die Weiterentwicklung. Stand: 14.06.2026._
+_Übergabe-Dokument für die Weiterentwicklung. Stand: 22.06.2026._
 
 Alles, was du brauchst, um das Projekt zu übernehmen: Schnellstart, Architektur,
 was läuft, was offen ist, und die Supabase-MCP-Einrichtung.
+
+---
+
+## 0. Aktueller Stand — LIVE (22.06.2026)
+
+🟢 **Produktiv online unter https://os.awcode.de.**
+
+- **Deploy:** Docker auf dem **Hostinger-VPS `187.124.190.135`** (VM 1773612), der
+  parallel den Kontaktformular-Dienst `kontakt-api` betreibt. Darum **kein eigener
+  Caddy**: App lauscht nur auf `127.0.0.1:3000`, der System-Nginx bekommt einen
+  zusätzlichen vhost `os.awcode.de` → 127.0.0.1:3000 (+ certbot-TLS). Compose-Datei:
+  `docker-compose.vps.yml`, vhost: `deploy/nginx-os-awcode.conf`.
+- **Update/Redeploy:** lokalen Quellbaum tarren (ohne node_modules/.next/.git/.env*)
+  → `scp` nach `/opt/aw-os` → entpacken → `cd /opt/aw-os && docker compose -f
+  docker-compose.vps.yml up -d --build`. Prod-`.env` liegt auf dem VPS unter
+  `/opt/aw-os/.env` (chmod 600, NIE committen). SSH-Key: `~/.ssh/hostinger_vps`.
+- **Auth ist LIVE** (siehe Abschnitt 20 unten ist veraltet — Stand hier gilt):
+  Supabase-Auth mit Rollen `admin/agent/pending`, echtes RLS. NICHT mehr „ohne Auth".
+- **Telefonie-Brücke** bleibt getrennt auf `5.231.248.34` (Aschrafs Asterisk), App
+  erreicht sie per WSS.
+
+### Souffleur-Audio + Cold-Call-Agent (22.06.2026)
+Tiefen-Recherche (8-Agenten-Schwarm) gegen „Ton kacke an beiden Seiten" → umgesetzt:
+- **Audio:** Deepgram `nova-2`→`nova-3`, Mikro `noiseSuppression/autoGainControl`
+  aus (AEC bleibt), Headset-Pflicht-Hinweis, **Deepgram-WS Auto-Reconnect** (Mikro +
+  SIP-Kunde, gedeckelt, Retry-Reset erst bei echtem Transkript — 2-Agenten-Review-Bug
+  gefixt). `encoding`/`sample_rate` NIE setzen (webm/opus containerisiert).
+- **KI-Dirigent-Prompt** auf Anfänger-Methodik (EINE kurze Zeile, You-Phrasing,
+  Einwand anerkennen→drehen→Frage max 2, bei Wärme Alternativfrage auf Termin).
+- **Voller Befund:** `SOUFFLEUR-AUDIT.md`. **Aschraf-Brücken-Todo:**
+  `NACHRICHT-AN-ASCHRAF-AUDIO.md` (mediaConstraints, micStream-Sharing, TURN, Jitterbuffer).
+- **Noch offen:** eine Mikro-Session im Anruf (statt doppeltes getUserMedia), Direkt-
+  anruf=Standard statt tel:, PC-Ton/SIP-Sperre, sichtbare Coaching-UI (Status-Streifen/
+  Redeanteil-Nudge/Tonalitäts-Cue), Phase 7 (eigene SIP-Nummer pro Mitarbeiter),
+  §14-Rechnungs-PDF, Supabase Site-URL/Redirect-URL setzen (für Signup-Confirm/Reset).
 
 ---
 
@@ -17,7 +52,8 @@ den ganzen Weg: **Leads finden → anrufen (mit Live-Souffleur) → Abschluss �
 - **Stack:** Next.js 16 (App Router), React 19, TypeScript, Tailwind v4, Drizzle ORM,
   Supabase (Postgres EU), Anthropic Claude (Haiku 4.5), Deepgram (STT), jssip.
 - **Repo:** `github.com/wesammoshrif/aw_digital.os` (privat)
-- **Single-Tenant** (eine Agentur, `OWNER_ID`), noch ohne Auth.
+- **Multi-User mit Supabase-Auth** (Rollen admin/agent/pending, RLS). `OWNER_ID`
+  bleibt für die Telefonie/Default-Zuordnung. (Frühere „ohne Auth"-Notizen unten sind überholt.)
 
 ---
 
