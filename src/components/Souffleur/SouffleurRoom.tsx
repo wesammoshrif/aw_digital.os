@@ -152,6 +152,12 @@ export function SouffleurRoom({
   const micRecorderRef = useRef<MediaRecorder | null>(null);
   const micWsRef = useRef<WebSocket | null>(null);
   const micGenRef = useRef(0); // Stale-Guard: jeder Start bekommt eine Generation
+  // Auto-Reconnect bei WS-Abriss (sonst sendet ein neuer WS nur header-lose
+  // Chunks → Transkript stirbt still). Gedeckelt, Timer wird beim Teardown gelöscht.
+  const micReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const micRetryRef = useRef(0);
+  const sysReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sysRetryRef = useRef(0);
   const sysCtxRef = useRef<AudioContext | null>(null);
   const sysStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -268,67 +274,103 @@ export function SouffleurRoom({
     };
     tick();
 
-    try {
-      const tok = await fetch("/api/souffleur/deepgram-token", {
-        method: "POST",
-      }).then((r) => r.json());
-      if (gen !== micGenRef.current) return;
-      if (!tok.ok) {
-        setMicStatus("no-key");
-        return;
-      }
-      const ws = new WebSocket(DG_URL, ["token", tok.token]);
-      micWsRef.current = ws;
-      ws.onopen = () => {
-        if (ws !== micWsRef.current || gen !== micGenRef.current) {
-          try {
-            ws.close();
-          } catch {}
+    // Token → WS → Recorder als rekursive Funktion: bricht der WS ab, setzt
+    // sie sich automatisch komplett neu auf (frischer Token + frischer
+    // WebM-Header), sonst käme nur header-loses Audio und das Transkript stürbe still.
+    // WICHTIG: Der Retry-Zähler wird NICHT bei onopen genullt (das feuert schon
+    // beim bloßen Connect → bei Flackern entstünde ein Endlos-Sturm), sondern
+    // erst bei einem ECHTEN Transkript (onmessage). So greift der 5er-Deckel
+    // auch im „connect-dann-sofort-weg"-Fall.
+    const connectDg = async () => {
+      const scheduleRetry = () => {
+        if (
+          gen === micGenRef.current &&
+          micStreamRef.current &&
+          micRetryRef.current < 5
+        ) {
+          micRetryRef.current++;
+          micReconnectRef.current = setTimeout(connectDg, 1200);
+        } else if (gen === micGenRef.current) {
+          setMicStatus("error");
+          setMicError("Transkription verloren — Mikro neu starten.");
+        }
+      };
+      try {
+        const tok = await fetch("/api/souffleur/deepgram-token", {
+          method: "POST",
+        }).then((r) => r.json());
+        if (gen !== micGenRef.current) return;
+        if (!tok.ok) {
+          setMicStatus("no-key"); // echtes Schlüssel-/Rechte-Problem → kein Retry
           return;
         }
-        setMicStatus("live");
-        const rec = new MediaRecorder(stream, {
-          mimeType: "audio/webm;codecs=opus",
-        });
-        micRecorderRef.current = rec;
-        rec.ondataavailable = (ev) => {
-          if (ev.data.size > 0 && ws.readyState === 1)
-            ev.data.arrayBuffer().then((b) => ws.send(b));
-        };
-        rec.start(250);
-      };
-      ws.onmessage = (m) => {
-        try {
-          const d = JSON.parse(m.data as string);
-          const text = d.channel?.alternatives?.[0]?.transcript as
-            | string
-            | undefined;
-          if (text && d.is_final) {
-            setTranscript((prev) => (prev + " " + text).slice(-1200));
-            if (micAsCustomerRef.current) {
-              onCustomerText(text, "Mikro-Test");
-            } else {
-              // Echtbetrieb: das eigene Mikro ist der Berater-Redezug.
-              onAdvisorText(text);
-            }
+        const ws = new WebSocket(DG_URL, ["token", tok.token]);
+        micWsRef.current = ws;
+        ws.onopen = () => {
+          if (ws !== micWsRef.current || gen !== micGenRef.current) {
+            try {
+              ws.close();
+            } catch {}
+            return;
           }
-        } catch {
-          /* ignore */
-        }
-      };
-      ws.onerror = () => {
-        if (ws !== micWsRef.current) return;
-        setMicStatus("error");
-        setMicError("Deepgram-Verbindung fehlgeschlagen");
-      };
-      ws.onclose = () => {
-        if (ws !== micWsRef.current) return;
-        setMicStatus((s) => (s === "live" ? "idle" : s));
-      };
-    } catch (err) {
-      setMicStatus("error");
-      setMicError(String(err));
-    }
+          try {
+            micRecorderRef.current?.stop?.();
+            const rec = new MediaRecorder(stream, {
+              mimeType: "audio/webm;codecs=opus",
+            });
+            micRecorderRef.current = rec;
+            rec.ondataavailable = (ev) => {
+              if (ev.data.size > 0 && ws.readyState === 1)
+                ev.data.arrayBuffer().then((b) => ws.send(b));
+            };
+            rec.start(250);
+            setMicStatus("live");
+          } catch {
+            // Recorder kaputt (Track ended o.ä.) → WS schließen, onclose reconnectet.
+            try {
+              ws.close();
+            } catch {}
+          }
+        };
+        ws.onmessage = (m) => {
+          try {
+            const d = JSON.parse(m.data as string);
+            const text = d.channel?.alternatives?.[0]?.transcript as
+              | string
+              | undefined;
+            if (text && d.is_final) {
+              micRetryRef.current = 0; // gesunde Session → Reconnect-Budget zurück
+              setTranscript((prev) => (prev + " " + text).slice(-1200));
+              if (micAsCustomerRef.current) {
+                onCustomerText(text, "Mikro-Test");
+              } else {
+                // Echtbetrieb: das eigene Mikro ist der Berater-Redezug.
+                onAdvisorText(text);
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        };
+        ws.onerror = () => {
+          /* onclose übernimmt Reconnect + Statusentscheid */
+        };
+        ws.onclose = () => {
+          if (ws !== micWsRef.current) return;
+          micWsRef.current = null;
+          try {
+            micRecorderRef.current?.stop?.();
+          } catch {}
+          micRecorderRef.current = null;
+          scheduleRetry();
+        };
+      } catch {
+        if (gen !== micGenRef.current) return;
+        scheduleRetry(); // transienter Netz-/Fetch-Fehler → gedeckelt erneut
+      }
+    };
+    micRetryRef.current = 0;
+    connectDg();
     // onCustomerText ist stabil (refs); bewusst nicht in den Deps, um Reconnect
     // des Mikros bei jedem Tipp zu vermeiden.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,6 +378,10 @@ export function SouffleurRoom({
 
   const stopMic = useCallback(() => {
     micGenRef.current++;
+    if (micReconnectRef.current) {
+      clearTimeout(micReconnectRef.current);
+      micReconnectRef.current = null;
+    }
     try {
       micRecorderRef.current?.stop?.();
     } catch {}
@@ -495,6 +541,10 @@ export function SouffleurRoom({
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
   const teardownCustomerPipeline = useCallback(() => {
+    if (sysReconnectRef.current) {
+      clearTimeout(sysReconnectRef.current);
+      sysReconnectRef.current = null;
+    }
     try {
       recorderRef.current?.stop?.();
     } catch {}
@@ -549,47 +599,88 @@ export function SouffleurRoom({
       };
       tick();
 
-      try {
-        const tok = await fetch("/api/souffleur/deepgram-token", {
-          method: "POST",
-        }).then((r) => r.json());
-        if (!tok.ok) {
-          setDgStatus("no-key");
-          return;
-        }
-        const ws = new WebSocket(DG_URL, ["token", tok.token]);
-        dgWsRef.current = ws;
-        ws.onopen = () => {
-          setDgStatus("live");
-          const rec = new MediaRecorder(stream, {
-            mimeType: "audio/webm;codecs=opus",
-          });
-          recorderRef.current = rec;
-          rec.ondataavailable = (ev) => {
-            if (ev.data.size > 0 && ws.readyState === 1)
-              ev.data.arrayBuffer().then((b) => ws.send(b));
-          };
-          rec.start(250);
-        };
-        ws.onmessage = (m) => {
-          try {
-            const d = JSON.parse(m.data as string);
-            const text = d.channel?.alternatives?.[0]?.transcript as
-              | string
-              | undefined;
-            if (text && d.is_final) onCustomerText(text, "Kunde");
-          } catch {
-            /* ignore */
+      // Rekursiver Connect mit Auto-Reconnect (frischer Token + WebM-Header),
+      // damit der Kunden-Stream bei einem WS-Abriss nicht still verstummt.
+      // Retry-Zähler erst bei echtem Transkript zurücksetzen (nicht bei onopen) —
+      // sonst Endlos-Sturm bei Flacker-Verbindungen.
+      const connectDgSys = async () => {
+        const scheduleRetry = () => {
+          if (sysStreamRef.current === stream && sysRetryRef.current < 5) {
+            sysRetryRef.current++;
+            sysReconnectRef.current = setTimeout(connectDgSys, 1200);
+          } else if (sysStreamRef.current === stream) {
+            setDgStatus("error");
           }
         };
-        ws.onerror = () => setDgStatus("error");
-        ws.onclose = () => {
-          if (ws !== dgWsRef.current) return;
-          setDgStatus((s) => (s === "live" ? "off" : s));
-        };
-      } catch {
-        setDgStatus("error");
-      }
+        try {
+          const tok = await fetch("/api/souffleur/deepgram-token", {
+            method: "POST",
+          }).then((r) => r.json());
+          if (sysStreamRef.current !== stream) return; // Stream nicht mehr aktiv
+          if (!tok.ok) {
+            setDgStatus("no-key"); // echtes Schlüssel-/Rechte-Problem → kein Retry
+            return;
+          }
+          const ws = new WebSocket(DG_URL, ["token", tok.token]);
+          dgWsRef.current = ws;
+          ws.onopen = () => {
+            if (ws !== dgWsRef.current || sysStreamRef.current !== stream) {
+              try {
+                ws.close();
+              } catch {}
+              return;
+            }
+            try {
+              recorderRef.current?.stop?.();
+              const rec = new MediaRecorder(stream, {
+                mimeType: "audio/webm;codecs=opus",
+              });
+              recorderRef.current = rec;
+              rec.ondataavailable = (ev) => {
+                if (ev.data.size > 0 && ws.readyState === 1)
+                  ev.data.arrayBuffer().then((b) => ws.send(b));
+              };
+              rec.start(250);
+              setDgStatus("live");
+            } catch {
+              try {
+                ws.close();
+              } catch {}
+            }
+          };
+          ws.onmessage = (m) => {
+            try {
+              const d = JSON.parse(m.data as string);
+              const text = d.channel?.alternatives?.[0]?.transcript as
+                | string
+                | undefined;
+              if (text && d.is_final) {
+                sysRetryRef.current = 0; // gesunde Session → Budget zurück
+                onCustomerText(text, "Kunde");
+              }
+            } catch {
+              /* ignore */
+            }
+          };
+          ws.onerror = () => {
+            /* onclose übernimmt Reconnect + Statusentscheid */
+          };
+          ws.onclose = () => {
+            if (ws !== dgWsRef.current) return;
+            dgWsRef.current = null;
+            try {
+              recorderRef.current?.stop?.();
+            } catch {}
+            recorderRef.current = null;
+            scheduleRetry();
+          };
+        } catch {
+          if (sysStreamRef.current !== stream) return;
+          scheduleRetry();
+        }
+      };
+      sysRetryRef.current = 0;
+      connectDgSys();
     },
     [onCustomerText, teardownCustomerPipeline],
   );
