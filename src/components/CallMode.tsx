@@ -87,8 +87,13 @@ export function CallMode({
   const telHref = lead.phone ? `tel:${lead.phone}` : "#";
 
   // ── Dispo speichern: Kadenz anwenden → PATCH → zur Heute-Liste ──
+  const dispatchingRef = useRef(false);
   const saveDispo = useCallback(
     async (dispo: Disposition, label: string, appointmentAt?: Date) => {
+      // Doppel-Dispo verhindern: Button UND postMessage aus dem Popup können
+      // gleichzeitig feuern → sonst doppelte calls/activities/Termine.
+      if (dispatchingRef.current) return;
+      dispatchingRef.current = true;
       setSaving(dispo);
       setSaveError(null);
       const cad = applyCadence(
@@ -103,7 +108,7 @@ export function CallMode({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             status: cad.status,
-            attempts: cad.attempts,
+            attemptsIncrement: true, // Server inkrementiert atomar (kein Lost-Update)
             nextStep: cad.nextStep,
             nextStepAt: cad.nextStepAt.toISOString(),
             locked: cad.locked ?? false,
@@ -209,6 +214,7 @@ export function CallMode({
       } finally {
         setSaving(null);
         lastCallDataRef.current = null;
+        dispatchingRef.current = false;
       }
     },
     [lead.id, lead.status, lead.attempts, note, router, nextLeadId],

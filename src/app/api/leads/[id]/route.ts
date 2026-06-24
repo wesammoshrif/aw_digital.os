@@ -36,7 +36,7 @@ export async function PATCH(
   try {
     const { db } = await import("@/db");
     const { leads } = await import("@/db/schema");
-    const { eq, and } = await import("drizzle-orm");
+    const { eq, and, sql } = await import("drizzle-orm");
     // Admin darf jeden Lead, Agent nur seine eigenen (IDOR-Schutz).
     const scope =
       user.role === "admin"
@@ -45,7 +45,12 @@ export async function PATCH(
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (body.status) patch.status = body.status;
-    if (typeof body.attempts === "number") patch.attempts = body.attempts;
+    // Atomares Inkrement hat Vorrang (kein Lost-Update bei Stale/Doppel-Dispo).
+    if (body.attemptsIncrement) {
+      patch.attempts = sql`${leads.attempts} + 1`;
+    } else if (typeof body.attempts === "number") {
+      patch.attempts = body.attempts;
+    }
     if (body.nextStep) patch.nextStep = body.nextStep;
     if (body.nextStepAt) {
       const d = new Date(body.nextStepAt);
@@ -53,14 +58,11 @@ export async function PATCH(
     }
     if (typeof body.locked === "boolean") patch.locked = body.locked;
     if (body.note?.trim()) {
-      // Notiz anhängen statt überschreiben
-      const [row] = await db
-        .select({ notes: leads.notes })
-        .from(leads)
-        .where(scope);
       const stamp = new Date().toLocaleDateString("de-DE");
       const entry = `[${stamp}] ${body.note.trim()}`;
-      patch.notes = row?.notes ? `${row.notes}\n${entry}` : entry;
+      // Atomar anhängen statt read-modify-write (sonst Lost-Update bei
+      // parallelem PATCH — eine Notiz würde überschrieben).
+      patch.notes = sql`coalesce(${leads.notes} || E'\n', '') || ${entry}`;
     }
 
     await db.update(leads).set(patch).where(scope);

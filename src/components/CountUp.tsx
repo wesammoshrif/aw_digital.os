@@ -24,6 +24,7 @@ export function CountUp({
   const safe = Number.isFinite(value) ? value : 0;
   const [display, setDisplay] = useState(0);
   const fromRef = useRef(0);
+  const shownRef = useRef(0); // zuletzt gerenderter Wert (für saubere Unterbrechung)
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -40,14 +41,17 @@ export function CountUp({
       const t = Math.min(1, (now - start) / duration);
       // easeOutCubic
       const eased = 1 - Math.pow(1 - t, 3);
-      setDisplay(from + (safe - from) * eased);
+      const val = from + (safe - from) * eased;
+      shownRef.current = val;
+      setDisplay(val);
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
       else fromRef.current = safe;
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      fromRef.current = safe;
+      // Bei Unterbrechung vom zuletzt gezeigten Wert weiter (kein Sprung).
+      fromRef.current = shownRef.current;
     };
   }, [safe, duration]);
 

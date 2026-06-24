@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Phone, ArrowUpRight } from "lucide-react";
 import { LeadsFilter } from "./LeadsFilter";
@@ -20,6 +20,9 @@ function patchLead(id: string, body: Record<string, unknown>) {
 
 export function LeadsTable({ leads }: { leads: Lead[] }) {
   const [rows, setRows] = useState(leads);
+  // Server-Daten haben Vorrang: nach router.refresh()/Re-Navigation neu spiegeln,
+  // sonst zeigt die Tabelle veraltete Zeilen (useState initialisiert nur einmal).
+  useEffect(() => setRows(leads), [leads]);
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
   const [justUpdated, setJustUpdated] = useState<string | null>(null);

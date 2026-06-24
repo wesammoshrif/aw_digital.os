@@ -38,13 +38,31 @@ export async function POST(req: NextRequest) {
 
   try {
     const { db } = await import("@/db");
-    const { projects } = await import("@/db/schema");
+    const { projects, leads } = await import("@/db/schema");
+    const { eq, and } = await import("drizzle-orm");
 
     const leadId = body.leadId?.trim();
     if (!leadId) {
       return NextResponse.json(
         { ok: false, error: "Lead-Zuordnung (Lead-ID) ist Pflicht." },
         { status: 400 },
+      );
+    }
+
+    // Owner-Check: nur an eigene Leads anhängen (raw db umgeht RLS).
+    const [owned] = await db
+      .select({ id: leads.id })
+      .from(leads)
+      .where(
+        user.role === "admin"
+          ? eq(leads.id, leadId)
+          : and(eq(leads.id, leadId), eq(leads.ownerId, user.id)),
+      )
+      .limit(1);
+    if (!owned) {
+      return NextResponse.json(
+        { ok: false, error: "Lead nicht gefunden." },
+        { status: 404 },
       );
     }
 

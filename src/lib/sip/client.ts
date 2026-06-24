@@ -50,6 +50,7 @@ export class EasybellSipClient {
   private remoteAudioEl: HTMLAudioElement | null = null;
   private cfg: SipConfig | null = null;
   private remoteAttached = false;
+  private iceTimer: ReturnType<typeof setTimeout> | null = null;
 
   on<K extends keyof SipEvents>(ev: K, cb: SipEvents[K]) {
     this.listeners[ev] = cb;
@@ -193,11 +194,14 @@ export class EasybellSipClient {
     // ist, spätestens kurz nach den Host-Kandidaten.
     let iceReady: (() => void) | null = null;
     let iceFired = false;
-    let iceTimer: ReturnType<typeof setTimeout> | null = null;
     const fireIce = () => {
-      if (iceFired || !iceReady) return;
+      // Nicht feuern, wenn der Anruf inzwischen aufgelegt wurde (Timer-Race).
+      if (iceFired || !iceReady || !this.session) return;
       iceFired = true;
-      if (iceTimer) clearTimeout(iceTimer);
+      if (this.iceTimer) {
+        clearTimeout(this.iceTimer);
+        this.iceTimer = null;
+      }
       console.log("[SIP] ICE-Gathering abgekürzt → INVITE wird gesendet");
       iceReady();
     };
@@ -211,8 +215,8 @@ export class EasybellSipClient {
       }
       // Nur Host-Kandidaten bisher: kurzes Fenster auf srflx, dann trotzdem
       // senden (die Brücke hat eine öffentliche IP → Host-Kandidat reicht).
-      if (iceTimer) clearTimeout(iceTimer);
-      iceTimer = setTimeout(fireIce, 1200);
+      if (this.iceTimer) clearTimeout(this.iceTimer);
+      this.iceTimer = setTimeout(fireIce, 1200);
     });
 
     // ── Strategie 1: peerconnection-Event + track-Event ──────────────────
@@ -283,6 +287,10 @@ export class EasybellSipClient {
   }
 
   hangup() {
+    if (this.iceTimer) {
+      clearTimeout(this.iceTimer);
+      this.iceTimer = null;
+    }
     try { this.session?.terminate(); } catch { /* ignore */ }
     this.session = null;
     this.remoteAttached = false;

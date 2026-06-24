@@ -28,6 +28,15 @@ export async function POST(req: NextRequest) {
   const { leads } = await import("@/db/schema");
 
   try {
+    // Früh ablehnen anhand Content-Length, BEVOR die ganze Payload in den
+    // Speicher gelesen wird (sonst greift die 5-MB-Grenze zu spät → OOM-Risiko).
+    const declaredLen = Number(req.headers.get("content-length") ?? 0);
+    if (Number.isFinite(declaredLen) && declaredLen > 5_000_000) {
+      return NextResponse.json(
+        { ok: false, error: "Import-Datei zu groß (max 5 MB)." },
+        { status: 413 },
+      );
+    }
     const body = await req.text();
     // Größenbegrenzung gegen übergroße Payloads (~5 MB).
     if (body.length > 5_000_000) {

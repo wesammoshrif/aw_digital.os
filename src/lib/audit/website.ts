@@ -445,6 +445,34 @@ function buildHook(input: {
 
 function normalize(url: string): string {
   const trimmed = url.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    throw new Error("Ungültige URL");
+  }
+  // SSRF-Schutz: nur http/https, keine internen/Loopback/Link-Local/Private-IP-
+  // Ziele und keine schemalosen internen Hostnamen (ohne Punkt = keine TLD).
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Nur http/https erlaubt");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const blocked =
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host.startsWith("[") || // IPv6-Literale (ULA/link-local) konservativ blocken
+    host.endsWith(".localhost") ||
+    host.endsWith(".internal") ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    !host.includes("."); // interner Kurz-Hostname ohne Domain
+  if (blocked) {
+    throw new Error("Interne/private Adressen sind nicht erlaubt");
+  }
+  return withScheme;
 }

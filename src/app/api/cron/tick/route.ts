@@ -92,6 +92,21 @@ async function handle(req: NextRequest) {
 
       for (const appt of due) {
         try {
+          // Atomar „claimen": nur wer reminderSentAt von NULL auf jetzt dreht,
+          // verschickt die Mail → keine doppelten Erinnerungen bei
+          // überlappenden Ticks (Retry / zweiter POST).
+          const claimed = await db
+            .update(appointments)
+            .set({ reminderSentAt: now })
+            .where(
+              and(
+                eq(appointments.id, appt.id),
+                isNull(appointments.reminderSentAt),
+              ),
+            )
+            .returning({ id: appointments.id });
+          if (claimed.length === 0) continue;
+
           // Lead für E-Mail-Adresse laden
           const [lead] = await db
             .select()
@@ -114,13 +129,6 @@ async function handle(req: NextRequest) {
               text: `Erinnerung an Ihren Termin (${company}): ${appt.title ?? "Termin"} am ${when}${appt.location ? ` · ${appt.location}` : ""}.`,
             });
           }
-
-          // Markieren als „erinnert" — auch wenn keine E-Mail-Adresse vorlag,
-          // damit nicht in jedem Tick erneut versucht wird.
-          await db
-            .update(appointments)
-            .set({ reminderSentAt: now })
-            .where(eq(appointments.id, appt.id));
 
           reminders++;
         } catch (innerErr) {

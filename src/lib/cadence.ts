@@ -112,6 +112,7 @@ export function dailyTarget(
 ): number {
   if (!rampStartedAt) return start;
   const days = Math.floor((Date.now() - rampStartedAt.getTime()) / DAY);
+  if (days <= 0) return start; // zukünftiges/heutiges Startdatum → kein Minus-Ziel
   const bumps = Math.floor(days / intervalDays);
   return Math.min(max, start + bumps * step);
 }

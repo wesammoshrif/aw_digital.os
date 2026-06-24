@@ -76,7 +76,9 @@ export async function POST(req: NextRequest) {
       sentiment: body.sentiment ?? null,
       externalCallId: body.externalCallId ?? null,
       externalProvider: "easybell",
-      startedAt: new Date(),
+      // startedAt aus der real gemessenen Dauer ableiten (statt = endedAt),
+      // sonst ist endedAt - startedAt ≈ 0 und widerspricht durationSec.
+      startedAt: new Date(Date.now() - (body.durationSec ?? 0) * 1000),
       endedAt: new Date(),
     });
 

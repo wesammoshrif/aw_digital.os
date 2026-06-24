@@ -10,6 +10,13 @@
  */
 
 import { z } from "zod";
+
+/** Parst ein Datum defensiv: ungültige/leere Strings → null (kein Invalid Date). */
+function parseValidDate(v: string | null | undefined): Date | null {
+  if (!v) return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
 import type { NewLead } from "@/db/schema";
 
 const HtmlLeadSchema = z.object({
@@ -137,9 +144,7 @@ export function mapHtmlLead(
     maintenance:
       parsed.wartung?.toString() ?? parsed.maintenance?.toString() ?? null,
     nextStep: parsed.naechsterSchritt ?? parsed.nextStep ?? null,
-    nextStepAt: parsed.naechsterSchrittDatum
-      ? new Date(parsed.naechsterSchrittDatum)
-      : null,
+    nextStepAt: parseValidDate(parsed.naechsterSchrittDatum),
     attempts: parsed.versuche ?? parsed.attempts ?? 0,
     locked: parsed.gesperrt ?? parsed.locked ?? false,
     notes: parsed.notizen ?? parsed.notes ?? null,

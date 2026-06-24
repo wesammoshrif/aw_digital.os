@@ -50,11 +50,19 @@ export function StatusMenu({
       setOpen(false);
     };
     const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    // Das Portal-Menü liegt an festen Pixel-Koordinaten — beim Scrollen/Resize
+    // schließen, damit es nicht vom Button wegschwebt (capture: auch innere
+    // Scroll-Container).
+    const onMove = () => setOpen(false);
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onEsc);
+    window.addEventListener("scroll", onMove, true);
+    window.addEventListener("resize", onMove);
     return () => {
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onEsc);
+      window.removeEventListener("scroll", onMove, true);
+      window.removeEventListener("resize", onMove);
     };
   }, [open]);
 

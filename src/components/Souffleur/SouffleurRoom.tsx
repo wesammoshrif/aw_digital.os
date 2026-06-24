@@ -193,6 +193,7 @@ export function SouffleurRoom({
   const sysCtxRef = useRef<AudioContext | null>(null);
   const sysStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  const sysRafRef = useRef<number | null>(null); // RAF der Kunden-Pegel-Loop
   const dgWsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   // Imperative Hangup-Steuerung des SIP-Dialers (für „Auflegen" im Cockpit).
@@ -612,6 +613,10 @@ export function SouffleurRoom({
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
   const teardownCustomerPipeline = useCallback(() => {
+    if (sysRafRef.current) {
+      cancelAnimationFrame(sysRafRef.current);
+      sysRafRef.current = null;
+    }
     if (sysReconnectRef.current) {
       clearTimeout(sysReconnectRef.current);
       sysReconnectRef.current = null;
@@ -666,9 +671,9 @@ export function SouffleurRoom({
         an.getByteFrequencyData(data);
         const avg = data.reduce((a, b) => a + b, 0) / data.length;
         setSysLevel(Math.min(1, avg / 90));
-        if (sysCtxRef.current) requestAnimationFrame(tick);
+        if (sysCtxRef.current) sysRafRef.current = requestAnimationFrame(tick);
       };
-      tick();
+      sysRafRef.current = requestAnimationFrame(tick);
 
       // Rekursiver Connect mit Auto-Reconnect (frischer Token + WebM-Header),
       // damit der Kunden-Stream bei einem WS-Abriss nicht still verstummt.
@@ -800,9 +805,9 @@ export function SouffleurRoom({
           an.getByteFrequencyData(data);
           const avg = data.reduce((a, b) => a + b, 0) / data.length;
           setSysLevel(Math.min(1, avg / 90));
-          if (sysCtxRef.current) requestAnimationFrame(tick);
+          if (sysCtxRef.current) sysRafRef.current = requestAnimationFrame(tick);
         };
-        tick();
+        sysRafRef.current = requestAnimationFrame(tick);
 
         audioTracks[0].onended = () => stopSystem();
 
@@ -880,7 +885,19 @@ export function SouffleurRoom({
   const handleSipStatus = useCallback(
     (s: string) => {
       if (s === "ringing" || s === "in-call") {
-        if (!callWasActiveRef.current) setElapsed(0);
+        if (!callWasActiveRef.current) {
+          setElapsed(0);
+          // Frischer Anruf im selben Fenster: Treppe + Kunden-Kontext neu,
+          // sonst fließt das Transkript des Vorgesprächs in den neuen Call.
+          goStage("opener1");
+          custRef.current = "";
+          turnsRef.current = [];
+          historyRef.current = [];
+          lastSpeakerRef.current = null;
+          aiGenRef.current++;
+          setCustomerTranscript("");
+          setAiLine(null);
+        }
         callWasActiveRef.current = true;
         setCallEnded(false);
       } else if (
@@ -892,7 +909,7 @@ export function SouffleurRoom({
         stopSystem();
       }
     },
-    [stopSystem],
+    [stopSystem, goStage],
   );
 
   // ── Stille-Erkennung: Gesprächsende auch beim tel:-Anruf erkennen ──
@@ -956,7 +973,8 @@ export function SouffleurRoom({
     setWhy(null);
     setPhase("kalt");
     setConvoState("warten");
-  }, []);
+    goStage("opener1"); // Einstiegs-Treppe für den nächsten Anruf zurücksetzen
+  }, [goStage]);
 
   // ── Test-Modus: Skript-Anruf (fiktiver Kunde) ───────────────────
   const startTest = useCallback(
@@ -1039,6 +1057,7 @@ export function SouffleurRoom({
           tradeContext: tradeCard ? buildTradeContext(tradeCard) : null,
           neinTyp: classifyNein(custRef.current.slice(-200)),
           phase: phaseRef.current,
+          stage: stageRef.current,
           elapsedSec: elapsedRef.current,
           repName: repNameRef.current.trim() || null,
           profile: profileRef.current,

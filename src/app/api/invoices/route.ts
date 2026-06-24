@@ -44,13 +44,32 @@ export async function POST(req: NextRequest) {
 
   try {
     const { db } = await import("@/db");
-    const { invoices } = await import("@/db/schema");
+    const { invoices, leads } = await import("@/db/schema");
+    const { eq, and } = await import("drizzle-orm");
+
+    // Owner-Check: nur an eigene Leads anhängen (raw db umgeht RLS).
+    const leadId = body.leadId.toString().trim();
+    const [owned] = await db
+      .select({ id: leads.id })
+      .from(leads)
+      .where(
+        user.role === "admin"
+          ? eq(leads.id, leadId)
+          : and(eq(leads.id, leadId), eq(leads.ownerId, user.id)),
+      )
+      .limit(1);
+    if (!owned) {
+      return NextResponse.json(
+        { ok: false, error: "Lead nicht gefunden." },
+        { status: 404 },
+      );
+    }
 
     const [row] = await db
       .insert(invoices)
       .values({
         ownerId: user.id,
-        leadId: body.leadId.toString().trim(),
+        leadId,
         invoiceNumber: body.invoiceNumber.toString().trim(),
         kind: (body.kind ?? "quote") as "quote" | "invoice",
         type: (body.type ?? "one_time") as

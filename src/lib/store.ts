@@ -29,6 +29,18 @@ import { withRls, type RlsTx } from "@/lib/db/rls";
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** numeric-Spalten kommen als String → robust parsen, NaN nicht weiterreichen. */
+function money(v: string | null | undefined): number {
+  const n = parseFloat(v ?? "");
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Tages-Schlüssel (YYYY-MM-DD) in lokaler Zeit (Europe/Berlin), nicht UTC —
+ *  sonst zählen späte Abend-/frühe Morgen-Anrufe auf den falschen Tag. */
+function dayKey(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(d);
+}
+
 /**
  * Führt eine Query RLS-gescopt als der eingeloggte Nutzer aus.
  * Kein Login (sollte hinter der Middleware nie passieren) → fallback.
@@ -130,7 +142,16 @@ export async function createAppointment(input: {
   if (isMockMode) return null;
   return scoped(null as { id: string } | null, async (tx, user) => {
     try {
-      const { appointments } = await import("@/db/schema");
+      const { appointments, leads } = await import("@/db/schema");
+      const { eq } = await import("drizzle-orm");
+      // Owner-Check: der RLS-Tx liefert nur eigene Leads → fremde/nicht
+      // existente leadId ⇒ kein Termin (verhindert IDOR + 500 bei kaputter ID).
+      const [owned] = await tx
+        .select({ id: leads.id })
+        .from(leads)
+        .where(eq(leads.id, input.leadId))
+        .limit(1);
+      if (!owned) return null;
       const reminderAt =
         input.reminderAt ??
         new Date(input.startsAt.getTime() - 24 * 60 * 60 * 1000);
@@ -262,10 +283,10 @@ async function weeklyCallsDb(anchor: Date): Promise<number[]> {
   for (let i = 6; i >= 0; i--) {
     const d = new Date(anchor);
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
+    const key = dayKey(d);
     days.push(
       calls.filter(
-        (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === key,
+        (c) => c.startedAt && dayKey(c.startedAt) === key,
       ).length,
     );
   }
@@ -433,7 +454,7 @@ export async function dashboardSummary() {
   const proposalCount = all.filter((l) => l.status === "proposal").length;
   const mrr = all
     .filter((l) => l.status === "won")
-    .reduce((sum, l) => sum + parseFloat(l.maintenance ?? "0"), 0);
+    .reduce((sum, l) => sum + money(l.maintenance), 0);
 
   const STAGES = ["new", "contacted", "reached", "audit_sent", "proposal", "won", "frozen"] as const;
   const pipeline: Record<string, { count: number; value: number }> = {};
@@ -442,7 +463,7 @@ export async function dashboardSummary() {
     pipeline[status] = {
       count: inStage.length,
       value: inStage.reduce(
-        (sum, l) => sum + parseFloat(l.maintenance ?? "0") * 12,
+        (sum, l) => sum + money(l.maintenance) * 12,
         0,
       ),
     };
@@ -473,7 +494,7 @@ export async function dashboardSummary() {
         inv.paidAt.getFullYear() === currentYear
       );
     })
-    .reduce((sum, inv) => sum + parseFloat(inv.amount), 0);
+    .reduce((sum, inv) => sum + money(inv.amount), 0);
 
   const stats = await callStats();
 
@@ -486,10 +507,10 @@ export async function dashboardSummary() {
   };
   if (!isMockMode) {
     const s = await getStreak();
-    const todayStr = now.toISOString().slice(0, 10);
+    const todayStr = dayKey(now);
     const allCalls = await listCalls();
     const todayProgress = allCalls.filter(
-      (c) => c.startedAt && c.startedAt.toISOString().slice(0, 10) === todayStr,
+      (c) => c.startedAt && dayKey(c.startedAt) === todayStr,
     ).length;
     // Tagesziel aus der Rampe statt hardcoded 25. Anker = konfiguriertes
     // Startdatum, sonst der erste Anruf des Nutzers, sonst heute (= Start 25).

@@ -26,6 +26,9 @@ export const leadCreateSchema = z.object({
 export const leadPatchSchema = z.object({
   status: optStr,
   attempts: z.number().int().min(0).max(10_000).optional(),
+  // Atomares Inkrement statt absoluter Wert (verhindert Lost-Update bei
+  // veraltetem Client-Stand / Doppel-Dispo). Hat Vorrang vor `attempts`.
+  attemptsIncrement: z.boolean().optional(),
   nextStep: optStr,
   nextStepAt: optStr,
   note: z.string().max(5000).optional(),
