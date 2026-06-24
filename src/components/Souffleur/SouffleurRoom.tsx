@@ -213,6 +213,7 @@ export function SouffleurRoom({
   const custRef = useRef(""); // rollendes Kunden-Transkript (für Matcher)
   const historyRef = useRef<string[]>([]); // letzte Kundenaussagen (für die KI)
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSpecFireRef = useRef(0); // letztes spekulatives Vorberechnen (Drossel)
   const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
@@ -624,13 +625,29 @@ export function SouffleurRoom({
         );
       }
 
+      // Spekulatives Vorberechnen: WÄHREND der Kunde noch redet (kein
+      // speech_final) die KI schon anstoßen, gedrosselt — so steht der Tipp fast
+      // fertig, sobald er aufhört. Nur im freien Gespräch, nicht im Opener-Gate,
+      // nicht während der Berater vorliest. Latest-wins (aiGenRef) ersetzt die
+      // spekulative Antwort durch die finale, sobald der Redezug wirklich endet.
+      if (
+        !speechFinal &&
+        stageRef.current === "frei" &&
+        Date.now() >= advisorActiveUntilRef.current &&
+        Date.now() - lastSpecFireRef.current > 700 &&
+        custRef.current.trim().length > 12
+      ) {
+        lastSpecFireRef.current = Date.now();
+        askAiNow();
+      }
+
       // Turn-Ende: bei Deepgrams speech_final (Kunde wirklich fertig) quasi
       // sofort, sonst kurze Coalescing-Pause. Das frühere 500-ms-Fenster war
       // der Hauptgrund für die träge KI-Übergabe.
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
       aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 60 : 180);
     },
-    [pushTurn, fireTurnEnd],
+    [pushTurn, fireTurnEnd, askAiNow],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
