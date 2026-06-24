@@ -22,7 +22,10 @@ function getDb(): DbClient {
       "DATABASE_URL is not set — DB-backed routes need a live Supabase connection. Set .env.local.",
     );
   }
-  const client = postgres(url, { prepare: false, max: 1 });
+  // max:1 serialisierte JEDE withRls-Transaktion (Promise.all brachte nichts,
+  // überlappende Navigationen stauten sich). 8 erlaubt echte Parallelität;
+  // prepare:false ist für den Supabase-Pooler Pflicht.
+  const client = postgres(url, { prepare: false, max: 8 });
   _db = drizzle(client, { schema });
   return _db;
 }

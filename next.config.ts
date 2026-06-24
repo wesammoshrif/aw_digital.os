@@ -38,6 +38,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Barrel-Imports (lucide-react) tree-shaken → kleineres Client-JS,
+  // schnellere Hydration auf jedem Screen.
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   // Schlankes Self-Host-Image: Next kopiert nur die nötigen Dateien
   // (.next/standalone) — kleines Docker-Image, kein npm install zur Laufzeit.
   output: "standalone",

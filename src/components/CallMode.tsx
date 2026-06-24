@@ -65,6 +65,14 @@ export function CallMode({
   const popupRef = useRef<Window | null>(null);
   // Anruf-Start für die Dauer-/Erreichungs-Statistik (connectRate).
   const callStartRef = useRef<number | null>(null);
+  // Echtes Gespräch + Consent aus dem Souffleur-Popup (für CRM-Gedächtnis +
+  // Post-Call-Summary). Wird pro Anruf gesetzt, nach dem Speichern geleert.
+  const lastCallDataRef = useRef<{
+    transcript: string | null;
+    consent: boolean;
+    company?: string;
+    trade?: string;
+  } | null>(null);
   useEffect(() => {
     if (active && callStartRef.current === null) callStartRef.current = Date.now();
     if (!active) callStartRef.current = null;
@@ -122,11 +130,40 @@ export function CallMode({
           }),
         });
 
-        // 3. Anruf protokollieren (Statistik & Gedächtnis) — Mock-No-Op
+        // 3. Anruf protokollieren (Statistik & Gedächtnis).
         const durationSec =
           callStartRef.current !== null
             ? Math.max(0, Math.round((Date.now() - callStartRef.current) / 1000))
             : null;
+        // Echtes Transkript NUR mit Einwilligung speichern (§201 StGB). Mit
+        // Transkript zusätzlich eine Post-Call-Summary holen (Stichpunkte/
+        // Sentiment/nächster Schritt) — CRM-Gedächtnis ohne Tipparbeit + Daten
+        // fürs Coaching. Ohne Consent bleibt es bei der getippten Notiz.
+        const cd = lastCallDataRef.current;
+        let transcriptToSave: string | null = note.trim() || null;
+        let summaryObj: Record<string, unknown> | null = null;
+        let sentiment: string | null = null;
+        if (cd?.consent && cd.transcript) {
+          transcriptToSave = cd.transcript;
+          try {
+            const s = await fetch(`/api/souffleur/summary`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                transcript: cd.transcript,
+                company: cd.company,
+                trade: cd.trade,
+              }),
+            }).then((r) => r.json());
+            if (s?.ok) {
+              summaryObj = {
+                points: Array.isArray(s.summary) ? s.summary : [],
+                nextStep: typeof s.nextStep === "string" ? s.nextStep : null,
+              };
+              sentiment = typeof s.sentiment === "string" ? s.sentiment : null;
+            }
+          } catch {}
+        }
         await fetch(`/api/calls`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -134,7 +171,9 @@ export function CallMode({
             leadId: lead.id,
             dispo,
             durationSec,
-            transcript: note.trim() || null,
+            transcript: transcriptToSave,
+            summary: summaryObj,
+            sentiment,
           }),
         }).catch(() => {});
 
@@ -171,6 +210,7 @@ export function CallMode({
         );
       } finally {
         setSaving(null);
+        lastCallDataRef.current = null;
       }
     },
     [lead.id, lead.status, lead.attempts, note, router, nextLeadId],
@@ -181,8 +221,24 @@ export function CallMode({
     const valid = new Set<string>(DISPOSITIONS.map((d) => d.key));
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
-      const d = e.data as { type?: string; leadId?: string; dispo?: string };
+      const d = e.data as {
+        type?: string;
+        leadId?: string;
+        dispo?: string;
+        transcript?: string | null;
+        consent?: boolean;
+        company?: string;
+        trade?: string;
+      };
       if (d?.type !== "souffleur:dispo" || d.leadId !== lead.id) return;
+      // Echtes Gespräch + Consent merken — auch für den Termin-Pfad, der erst
+      // nach dem Date-Picker speichert.
+      lastCallDataRef.current = {
+        transcript: d.transcript ?? null,
+        consent: !!d.consent,
+        company: d.company,
+        trade: d.trade,
+      };
       if (d.dispo === "hangup") {
         setActive(false);
         return;

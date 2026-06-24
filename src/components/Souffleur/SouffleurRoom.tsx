@@ -1044,10 +1044,27 @@ export function SouffleurRoom({
     try {
       sipControlRef.current?.hangup();
     } catch {}
-    // 2. Dispo an die Pipeline melden.
+    // 2. Dispo an die Pipeline melden — inkl. echtem Gesprächs-Transkript,
+    //    ABER nur wenn der Berater Einwilligung gesetzt hat (§201 StGB: ohne
+    //    Consent wird nichts gespeichert). Das echte Transkript ist die Basis
+    //    für CRM-Gedächtnis, Post-Call-Summary und Coaching.
+    const transcript = consent
+      ? turnsRef.current
+          .map((t) => `${t.speaker === "advisor" ? "Berater" : "Kunde"}: ${t.text}`)
+          .join("\n")
+          .slice(-8000) || null
+      : null;
     try {
       window.opener?.postMessage(
-        { type: "souffleur:dispo", leadId: lead.id, dispo: key },
+        {
+          type: "souffleur:dispo",
+          leadId: lead.id,
+          dispo: key,
+          transcript,
+          consent,
+          company: lead.company,
+          trade: lead.trade,
+        },
         window.location.origin,
       );
     } catch {}
