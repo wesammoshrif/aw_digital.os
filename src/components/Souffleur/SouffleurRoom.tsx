@@ -1,5 +1,13 @@
 "use client";
 
+/*
+ * ───────────────────────────────────────────────────────────────────────────
+ *  © 2026 Wesam Ephraim Moshrif. Alle Rechte vorbehalten.
+ *  Urheber und Rechteinhaber dieses Codes: Wesam Ephraim Moshrif.
+ *  Author / copyright holder of this code: Wesam Ephraim Moshrif.
+ * ───────────────────────────────────────────────────────────────────────────
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Mic,
@@ -84,7 +92,41 @@ const PHASE_STYLE: Record<Phase, string> = {
 //    webm/opus-containerisiert, Deepgram liest den Header selbst (Setzen würde
 //    den Stream zerschießen).
 const DG_URL =
-  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=250&smart_format=true&punctuate=true";
+  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=300&utterance_end_ms=1000&vad_events=true&smart_format=true&punctuate=true";
+
+// HEADSET_MODE=true: der Pegel-Lock (Berater spricht → Zeile einfrieren) ist
+// aktiv. Ohne Headset würde Lautsprecher-Bleed der Kundenstimme den Pegel offen
+// halten → dann auf false stellen (fällt auf den is_final-Lock zurück).
+const HEADSET_MODE = true;
+
+type DgWord = { confidence?: number };
+type DgResult = {
+  type?: string;
+  is_final?: boolean;
+  speech_final?: boolean;
+  channel?: {
+    alternatives?: Array<{
+      transcript?: string;
+      confidence?: number;
+      words?: DgWord[];
+    }>;
+  };
+};
+
+/** Geräusch-Heuristik aus dem Deepgram-Resultat: kleinste Wort-Konfidenz (sagt
+ *  mehr als der Satz-Durchschnitt) + Sprechsegment-Dauer seit SpeechStarted. */
+function dgWordStats(
+  d: DgResult,
+  speechStartedTs: number,
+): { minConf: number; segMs: number } {
+  const alt = d.channel?.alternatives?.[0];
+  const w = alt?.words ?? [];
+  const minConf = w.length
+    ? Math.min(...w.map((x) => x.confidence ?? 1))
+    : alt?.confidence ?? 1;
+  const segMs = speechStartedTs ? Date.now() - speechStartedTs : 0;
+  return { minConf, segMs };
+}
 
 export function SouffleurRoom({
   lead,
@@ -217,6 +259,26 @@ export function SouffleurRoom({
   const lastSpecFireRef = useRef(0); // letztes spekulatives Vorberechnen (Drossel)
   const callIdRef = useRef<string | null>(null); // externalCallId des laufenden Anrufs
   const moveIdRef = useRef<string | null>(null); // letzter erkannter Playbook-Move
+  // ── Sprech-Lock gegen Hintergrundgeräusche: solange der Berater liest, wird
+  // die angezeigte Zeile NICHT verändert/ersetzt. Zwei Quellen (Mikro-Pegel +
+  // Berater-is_final) werden per Math.max gemergt; Hard-Cap gegen Frozen-Pegel.
+  const speechLockUntilRef = useRef(0); // Pegel-Lock-Ende (RAF-getrieben)
+  const isFinalLockUntilRef = useRef(0); // Berater-is_final-Lock-Ende
+  const lockHardCapRef = useRef(0); // Pegel-Lock nie länger als das offen
+  const speechStartedRef = useRef(0); // ts des letzten Deepgram-SpeechStarted (Kunde)
+  const lastCustTextRef = useRef(""); // Dedup gegen Reconnect-Schwall
+  const lastCustTextAtRef = useRef(0);
+  const lastTurnQualifiedRef = useRef(false); // war der letzte Kunden-Turn „echt"?
+  const lockUntil = useCallback(
+    () =>
+      Math.max(
+        isFinalLockUntilRef.current,
+        HEADSET_MODE
+          ? Math.min(speechLockUntilRef.current, lockHardCapRef.current)
+          : 0,
+      ),
+    [],
+  );
   const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
@@ -348,7 +410,15 @@ export function SouffleurRoom({
     const tick = () => {
       an.getByteFrequencyData(data);
       const avg = data.reduce((a, b) => a + b, 0) / data.length;
-      setMicLevel(Math.min(1, avg / 90));
+      const lvl = avg / 90;
+      setMicLevel(Math.min(1, lvl));
+      // Berater spricht aktiv (Pegel > Sprech-Schwelle) → Lock mit 800ms Nachlauf
+      // (deckt Lese-Atempausen). Hard-Cap nur zu Lock-Beginn → kein ewiger Lock.
+      if (lvl > 0.1) {
+        speechLockUntilRef.current = Date.now() + 800;
+        if (lockHardCapRef.current < Date.now())
+          lockHardCapRef.current = Date.now() + 8000;
+      }
       if (micCtxRef.current) rafRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -413,15 +483,14 @@ export function SouffleurRoom({
         };
         ws.onmessage = (m) => {
           try {
-            const d = JSON.parse(m.data as string);
-            const text = d.channel?.alternatives?.[0]?.transcript as
-              | string
-              | undefined;
+            const d = JSON.parse(m.data as string) as DgResult;
+            const text = d.channel?.alternatives?.[0]?.transcript;
             if (text && d.is_final) {
               micRetryRef.current = 0; // gesunde Session → Reconnect-Budget zurück
               setTranscript((prev) => (prev + " " + text).slice(-1200));
               if (micAsCustomerRef.current) {
-                onCustomerText(text, "Mikro-Test", !!d.speech_final);
+                const { minConf, segMs } = dgWordStats(d, speechStartedRef.current);
+                onCustomerText(text, "Mikro-Test", !!d.speech_final, minConf, segMs);
               } else {
                 // Echtbetrieb: das eigene Mikro ist der Berater-Redezug.
                 onAdvisorText(text);
@@ -499,16 +568,14 @@ export function SouffleurRoom({
     [],
   );
 
-  // Solange > Date.now(): der Berater spricht/liest gerade vor → die KI-Zeile
-  // NICHT überschreiben (sonst „zieht die KI mitten im Sprechen den Text zurück").
-  const advisorActiveUntilRef = useRef(0);
   // Berater-Text (eigenes Mikro): als Berater-Redezug merken, KI NICHT triggern.
+  // Setzt den is_final-Lock zusätzlich zum Mikro-Pegel-Lock (gemergt in lockUntil).
   const onAdvisorText = useCallback(
     (text: string) => {
       if (!text.trim()) return;
       pushTurn("advisor", text);
       lastSpeakerRef.current = "advisor";
-      advisorActiveUntilRef.current = Date.now() + 900;
+      isFinalLockUntilRef.current = Date.now() + 900;
       setConvoState("berater");
       // Berater redet → Kunde ist nicht mehr dran: Turn-End-Timer abbrechen.
       if (aiDebounceRef.current) {
@@ -575,7 +642,9 @@ export function SouffleurRoom({
               started = true;
               setConvoState("warten"); // erstes Wort da → „KI wertet aus" weg
             }
-            setAiLine(acc);
+            // Anzeige NUR aktualisieren, wenn der Berater nicht gerade liest —
+            // der Stream akkumuliert weiter (acc), nur das Einblenden hält an.
+            if (Date.now() >= lockUntil()) setAiLine(acc);
           }
         }
         if (gen === aiGenRef.current) setConvoState("warten");
@@ -583,7 +652,7 @@ export function SouffleurRoom({
       .catch(() => {
         if (gen === aiGenRef.current) setConvoState("warten");
       });
-  }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
+  }, [lead.auditHook, lead.company, lead.trade, tradeCard, lockUntil]);
 
   // Turn-Ende: feuert GENAU eine KI-Anfrage pro Kunden-Redezug — aber NIE,
   // während der Berater gerade vorliest (dann kurz vertagen statt die Zeile
@@ -591,58 +660,98 @@ export function SouffleurRoom({
   const fireTurnEnd = useCallback(() => {
     aiDebounceRef.current = null;
     if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
-    if (Date.now() < advisorActiveUntilRef.current) {
+    if (Date.now() < lockUntil()) {
+      // Berater liest noch → Zeile NICHT ersetzen, gleich erneut prüfen.
       aiDebounceRef.current = setTimeout(fireTurnEnd, 250);
       return;
     }
-    // Einstiegs-Treppe: GENAU eine Stufe pro Kunden-Redezug.
-    if (stageRef.current === "opener1" || stageRef.current === "warten")
-      goStage("bridge");
-    else if (stageRef.current === "bridge") goStage("frei");
+    // Einstiegs-Treppe nur bei einem ECHTEN Kunden-Turn weiterschalten
+    // (speech_final + Mindestlänge) — ein Geräusch/„ja?" springt den Anfänger
+    // sonst ungewollt von „Erlaubnis" auf „Grund".
+    if (lastTurnQualifiedRef.current) {
+      if (stageRef.current === "opener1" || stageRef.current === "warten")
+        goStage("bridge");
+      else if (stageRef.current === "bridge") goStage("frei");
+    }
     setConvoState("denkt");
     askAiNow();
-  }, [askAiNow, goStage]);
+  }, [askAiNow, goStage, lockUntil]);
 
   // ── Kunden-Handler: Redezug protokollieren + Turn-Ende erkennen ──
   const onCustomerText = useCallback(
-    (text: string, sourceLabel: string, speechFinal = false) => {
-      if (!text.trim()) return;
-      setCustomerTranscript((prev) => (prev + " " + text).slice(-1400));
-      custRef.current = (custRef.current + " " + text).slice(-1600);
-      historyRef.current = [...historyRef.current, text.trim()].slice(-6);
-      pushTurn("customer", text);
-      lastSpeakerRef.current = "customer";
-      setConvoState("kunde");
+    (
+      text: string,
+      sourceLabel: string,
+      speechFinal = false,
+      minConf = 1,
+      segMs = 0,
+    ) => {
+      const t = text.trim();
+      if (!t) return;
+      const words = t.split(/\s+/).filter(Boolean).length;
 
-      // Sofortiger lokaler Cue (Matcher), während der Kunde redet.
+      // ── RAUSCH-GATE (vor JEDER Puffer-Mutation) ──────────────────────
+      // Verworfene Fetzen landen NIE in custRef/turnsRef/historyRef, damit sie
+      // weder die Anzeige noch den nächsten KI-Kontext verfälschen.
+      // 1) Dedup gegen Reconnect-Schwall: gleicher String < 500ms → weg.
+      if (
+        t === lastCustTextRef.current &&
+        Date.now() - lastCustTextAtRef.current < 500
+      )
+        return;
+      // 2) Zu kurzes Sprechsegment (VAD) = Klacken/Maschinenlärm.
+      if (segMs > 0 && segMs < 350) return;
+      // 3) Akustischer Matsch (sehr niedrige Wort-Konfidenz).
+      if (minConf < 0.4) return;
+      // 4) Kurz-Fetzen NUR durchlassen, wenn echtes Satzende + ausreichende
+      //    Konfidenz (echtes knappes „Ja, kurz" kommt durch, ein 1-Wort-
+      //    Geräuschburst nicht).
+      const tooShort = words < 2 || t.length < 6;
+      if (tooShort && !(speechFinal && minConf >= 0.55)) return;
+
+      lastCustTextRef.current = t;
+      lastCustTextAtRef.current = Date.now();
+      // „Echter" Turn (für Stage-Fortschritt): speech_final + Mindestlänge.
+      lastTurnQualifiedRef.current = !!speechFinal && words >= 2;
+
+      // ── Kontext IMMER pflegen (Rauschen ist hier bereits raus) ──────
+      setCustomerTranscript((prev) => (prev + " " + t).slice(-1400));
+      custRef.current = (custRef.current + " " + t).slice(-1600);
+      historyRef.current = [...historyRef.current, t].slice(-6);
+      pushTurn("customer", t);
+      lastSpeakerRef.current = "customer";
+
+      // ── Sichtbaren State NUR ändern, wenn der Berater NICHT gerade liest.
+      // Das ist der Kernfix: während des Sprech-Locks bleibt die Karte (Zeile,
+      // Move, Wärme-Phase, „Kunde spricht…") komplett eingefroren.
+      const locked = Date.now() < lockUntil();
       const mv = matchMove(custRef.current);
-      if (mv) {
-        moveIdRef.current = mv.id; // bewährte Playbook-Zeile an die KI durchreichen
-        setMove(mv);
-        setDetected(mv.label + " · " + sourceLabel);
-        setPhase(
-          estimatePhase({
-            elapsedSec: elapsedRef.current,
-            moveKind: mv.kind,
-            neinTyp: classifyNein(custRef.current.slice(-200)),
-            customerSpoke: true,
-          }),
-        );
-      } else {
-        moveIdRef.current = null;
+      moveIdRef.current = mv ? mv.id : null;
+      if (!locked) {
+        setConvoState("kunde");
+        if (mv) {
+          setMove(mv);
+          setDetected(mv.label + " · " + sourceLabel);
+          setPhase(
+            estimatePhase({
+              elapsedSec: elapsedRef.current,
+              moveKind: mv.kind,
+              neinTyp: classifyNein(custRef.current.slice(-200)),
+              customerSpoke: true,
+            }),
+          );
+        }
       }
 
-      // Spekulatives Vorberechnen: WÄHREND der Kunde noch redet (kein
-      // speech_final) die KI schon anstoßen, gedrosselt — so steht der Tipp fast
-      // fertig, sobald er aufhört. Bei erkanntem Einwand/Kaufsignal/Abschluss
-      // kürzere Drossel (350ms), weil der Berater den Konter dann am dringendsten
-      // sofort braucht. Latest-wins ersetzt die spekulative durch die finale Zeile.
+      // ── Spekulatives Vorberechnen — nur wenn nicht gelockt (spart Kosten;
+      // der finale Tipp kommt über fireTurnEnd direkt nach Lock-Ende). ──
       const urgent =
-        mv && (mv.kind === "objection" || mv.kind === "signal" || mv.kind === "closing");
+        mv &&
+        (mv.kind === "objection" || mv.kind === "signal" || mv.kind === "closing");
       if (
         !speechFinal &&
         stageRef.current === "frei" &&
-        Date.now() >= advisorActiveUntilRef.current &&
+        Date.now() >= lockUntil() &&
         Date.now() - lastSpecFireRef.current > (urgent ? 350 : 700) &&
         custRef.current.trim().length > 12
       ) {
@@ -650,17 +759,22 @@ export function SouffleurRoom({
         askAiNow();
       }
 
-      // Turn-Ende: bei Deepgrams speech_final (Kunde wirklich fertig) quasi
-      // sofort, sonst kurze Coalescing-Pause. Das frühere 500-ms-Fenster war
-      // der Hauptgrund für die träge KI-Übergabe.
+      // ── Turn-Ende-Fallback (Hauptweg ist Deepgrams UtteranceEnd-Event). ──
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-      aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 60 : 180);
+      aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 60 : 600);
     },
-    [pushTurn, fireTurnEnd, askAiNow],
+    [pushTurn, fireTurnEnd, askAiNow, lockUntil],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
   const teardownCustomerPipeline = useCallback(() => {
+    // Sprech-Lock-/Geräusch-Refs zurücksetzen (sonst feuert ein gepufferter
+    // Turn-End-Timer nach Gesprächsende noch einen Tipp in die tote Karte).
+    speechLockUntilRef.current = 0;
+    isFinalLockUntilRef.current = 0;
+    lockHardCapRef.current = 0;
+    speechStartedRef.current = 0;
+    lastCustTextRef.current = "";
     if (sysRafRef.current) {
       cancelAnimationFrame(sysRafRef.current);
       sysRafRef.current = null;
@@ -774,13 +888,22 @@ export function SouffleurRoom({
           };
           ws.onmessage = (m) => {
             try {
-              const d = JSON.parse(m.data as string);
-              const text = d.channel?.alternatives?.[0]?.transcript as
-                | string
-                | undefined;
+              const d = JSON.parse(m.data as string) as DgResult;
+              if (d.type === "SpeechStarted") {
+                speechStartedRef.current = Date.now();
+                return;
+              }
+              if (d.type === "UtteranceEnd") {
+                // Sauberes Turn-Ende (echte Stille auf dem Kanal) → Tipp jetzt.
+                if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
+                fireTurnEnd();
+                return;
+              }
+              const text = d.channel?.alternatives?.[0]?.transcript;
               if (text && d.is_final) {
                 sysRetryRef.current = 0; // gesunde Session → Budget zurück
-                onCustomerText(text, "Kunde", !!d.speech_final);
+                const { minConf, segMs } = dgWordStats(d, speechStartedRef.current);
+                onCustomerText(text, "Kunde", !!d.speech_final, minConf, segMs);
               }
             } catch {
               /* ignore */
@@ -891,11 +1014,21 @@ export function SouffleurRoom({
             };
             ws.onmessage = (m) => {
               try {
-                const d = JSON.parse(m.data as string);
-                const text = d.channel?.alternatives?.[0]?.transcript as
-                  | string
-                  | undefined;
-                if (text && d.is_final) onCustomerText(text, "Kunde", !!d.speech_final);
+                const d = JSON.parse(m.data as string) as DgResult;
+                if (d.type === "SpeechStarted") {
+                  speechStartedRef.current = Date.now();
+                  return;
+                }
+                if (d.type === "UtteranceEnd") {
+                  if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
+                  fireTurnEnd();
+                  return;
+                }
+                const text = d.channel?.alternatives?.[0]?.transcript;
+                if (text && d.is_final) {
+                  const { minConf, segMs } = dgWordStats(d, speechStartedRef.current);
+                  onCustomerText(text, "Kunde", !!d.speech_final, minConf, segMs);
+                }
               } catch {
                 /* ignore */
               }
@@ -1039,6 +1172,13 @@ export function SouffleurRoom({
     setPhase("kalt");
     setConvoState("warten");
     goStage("opener1"); // Einstiegs-Treppe für den nächsten Anruf zurücksetzen
+    // Sprech-Lock-/Geräusch-Refs ebenfalls neu (frischer Anruf).
+    speechLockUntilRef.current = 0;
+    isFinalLockUntilRef.current = 0;
+    lockHardCapRef.current = 0;
+    speechStartedRef.current = 0;
+    lastCustTextRef.current = "";
+    lastTurnQualifiedRef.current = false;
   }, [goStage]);
 
   // ── Test-Modus: Skript-Anruf (fiktiver Kunde) ───────────────────
