@@ -20,7 +20,14 @@ import {
   classifyNein,
   type NeinTyp,
 } from "@/lib/souffleur/strategies";
-import { isPhase, phaseGuidance, type Phase } from "@/lib/souffleur/phases";
+import {
+  isPhase,
+  phaseGuidance,
+  isStage,
+  stageGuidance,
+  type Phase,
+  type Stage,
+} from "@/lib/souffleur/phases";
 import { profileToHints } from "@/lib/souffleur/profile";
 import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
@@ -34,6 +41,13 @@ WIE DER SATZ KLINGT:
 - Gesprochenes, natürliches Deutsch — wie ein Mensch redet, NICHT wie vorgelesen. Kurze Sätze.
 - „Sie"/„Ihr Betrieb" im Fokus, „wir" statt „ich". Kein Floskel-/Werbe-Deutsch.
 - Ende möglichst mit einer FRAGE, damit der Kunde redet (der Kunde soll mehr sprechen als der Berater).
+
+EINSTIEGS-GATE (ZUERST, bevor irgendeine Phase läuft):
+Der Einstieg hat ZWEI getrennte Opener mit einer Kundenreaktion dazwischen. Du springst NIE über die Kundenreaktion hinweg.
+1) Opener 1 (Permission-Opener): NUR um Erlaubnis/30 Sekunden bitten. KEIN Grund, KEIN Audit-Detail, KEIN Pitch, KEIN Preis.
+2) Der Kunde reagiert. Brush-off (keine Zeit / kein Interesse / Mail / haben schon / zu teuer / wer sind Sie?) → EINE Konter-Zeile ANERKENNEN → DREHEN → FRAGE. Grünes Licht / neutrale Rückfrage → weiter zu Opener 2.
+3) Opener 2 (Bridge): JETZT erst der Grund — EIN konkreter Aufhänger (Gewerk + Ort + EIN Audit-Signal), mündend in EINE offene Bedarfsfrage.
+Der Block „AKTUELLER SCHRITT" unten sagt dir, wo im Einstieg du bist. Halte dich strikt daran.
 
 GESPRÄCHS-LOGIK (immer):
 - Ziel ist NUR der nächste Schritt: ein konkreter TERMIN. NIEMALS am Telefon verkaufen oder den Preis ausdiskutieren.
@@ -78,8 +92,15 @@ export async function POST(req: NextRequest) {
   const neinBlock = neinTyp
     ? `\nNein-Typ erkannt: ${neinTyp} → ${NEIN_GRADIENTEN.find((g) => g.typ === neinTyp)?.behandlung ?? ""}\n`
     : "";
+  // Einstiegs-Stufe: solange wir im Opener-Gate sind (opener1/warten/bridge),
+  // führt der stageBlock; erst bei „frei" (oder fehlend) greift die Wärme-Phase.
+  const stage: Stage = isStage(body.stage) ? body.stage : "frei";
+  const stageBlock = stage !== "frei" ? `\n${stageGuidance(stage)}\n` : "";
   const phaseHint: Phase = isPhase(body.phase) ? body.phase : "kalt";
-  const phaseBlock = `\nGesprächswärme: ${phaseHint} → ${phaseGuidance(phaseHint)}\n`;
+  const phaseBlock =
+    stage === "frei"
+      ? `\nGesprächswärme: ${phaseHint} → ${phaseGuidance(phaseHint)}\n`
+      : "";
   const repNote = body.repName
     ? `\nName des Beraters (in [Name] einsetzen): ${body.repName}\n`
     : "";
@@ -104,7 +125,7 @@ export async function POST(req: NextRequest) {
 
   const userPrompt = `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${repNote}${profileBlock}${seasonBlock}
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${stageBlock}${phaseBlock}${repNote}${profileBlock}${seasonBlock}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 

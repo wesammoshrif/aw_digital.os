@@ -73,3 +73,44 @@ export function estimatePhase(opts: {
   if (customerSpoke || elapsedSec > 45) return "lau";
   return "kalt";
 }
+
+/**
+ * Einstiegs-Treppe — VOR den Wärme-Phasen. Der Gesprächsanfang ist für einen
+ * Anfänger der gefährlichste Moment, deshalb ist er eine feste Schiene statt
+ * freier KI: Opener 1 (nur Erlaubnis) → zuhören → Opener 2/Bridge (der Grund)
+ * → dann erst übernimmt die freie Phasen-Logik („frei").
+ */
+export type Stage = "opener1" | "warten" | "bridge" | "frei";
+
+export const STAGES: {
+  key: Stage;
+  label: string;
+  tagline: string; // was der Berater jetzt tut
+}[] = [
+  { key: "opener1", label: "Eröffnung", tagline: "Schritt 1: Erlaubnis holen — Satz vorlesen" },
+  { key: "warten", label: "Zuhören", tagline: "Jetzt zuhören — NICHT reden, ihn reden lassen" },
+  { key: "bridge", label: "Grund", tagline: "Schritt 2: jetzt der Grund + erste Frage" },
+  { key: "frei", label: "Gespräch", tagline: "KI führt — Bedarf, Einwand, Termin" },
+];
+
+export function isStage(s: unknown): s is Stage {
+  return s === "opener1" || s === "warten" || s === "bridge" || s === "frei";
+}
+
+/**
+ * Anweisung an die KI je Einstiegs-Schritt. Erzwingt den Flow
+ * Opener 1 → Kundenreaktion → Opener 2 → Phasen, damit die KI den Grund nie
+ * über den Kunden hinwegfeuert. Bei "frei" greift wieder die Phasen-Logik.
+ */
+export function stageGuidance(s: Stage): string {
+  switch (s) {
+    case "opener1":
+      return "AKTUELLER SCHRITT: Permission-Opener. Gib NUR eine kurze, freundliche Erlaubnis-Frage (max 15 Wörter). KEIN Grund, KEIN Pitch, KEIN Preis, KEIN Audit-Detail. Beispiel: „Hab ich Sie gerade ganz ungünstig erwischt?“";
+    case "warten":
+      return "AKTUELLER SCHRITT: Zuhören. Der Berater wartet auf die Kundenreaktion — gib KEINEN neuen Satz, antworte nur mit einem Bindestrich „—“.";
+    case "bridge":
+      return "AKTUELLER SCHRITT: Bridge / Opener 2. Der Kunde hat auf den Opener reagiert (siehe letzter Kundensatz). War es ein Brush-off (keine Zeit / kein Interesse / Mail schicken / haben schon eine Website / zu teuer / wer sind Sie?) → gib EINE Konter-Zeile: erst ANERKENNEN, dann kurz DREHEN, dann eine FRAGE. War es grünes Licht oder eine neutrale Rückfrage → nenn JETZT den Grund (Gewerk + Ort + EIN konkretes Audit-Signal) und ende mit EINER offenen Bedarfsfrage. Genau EIN Satz.";
+    default:
+      return "";
+  }
+}

@@ -35,9 +35,10 @@ import {
 } from "@/lib/souffleur/strategies";
 import {
   PHASES,
-  isPhase,
   estimatePhase,
+  STAGES,
   type Phase,
+  type Stage,
 } from "@/lib/souffleur/phases";
 import { TEST_SCRIPTS, type ScriptStep } from "@/lib/souffleur/testScripts";
 import {
@@ -117,6 +118,15 @@ export function SouffleurRoom({
   const [showShareGuide, setShowShareGuide] = useState(false);
   const [showVoicemail, setShowVoicemail] = useState(false);
   const [briefingOpen, setBriefingOpen] = useState(true);
+  // Einstiegs-Treppe (opener1 → warten → bridge → frei): feste Schiene für den
+  // Gesprächsanfang, bevor die freie Phasen-Logik übernimmt. stageRef spiegelt
+  // den Wert für die Callbacks (askAiNow/onCustomerText laufen außerhalb Render).
+  const [stage, setStage] = useState<Stage>("opener1");
+  const stageRef = useRef<Stage>("opener1");
+  const goStage = useCallback((s: Stage) => {
+    stageRef.current = s;
+    setStage(s);
+  }, []);
   // Phase 9: Gesprächswärme + KI-Begründung + Werkzeug-Schublade.
   const [phase, setPhase] = useState<Phase>("kalt");
   const [why, setWhy] = useState<string | null>(null);
@@ -222,6 +232,28 @@ export function SouffleurRoom({
     }
     return fillName(fillHook(move.line, lead.auditHook));
   }, [move, lead.auditHook, lead.website, fillName]);
+
+  // Opener 1 — NUR Erlaubnis holen, kurz genug zum stolperfreien Vorlesen.
+  const opener1Line = useMemo(
+    () =>
+      fillName(
+        "Guten Tag, [Name] von AW Digital — hab ich Sie gerade ganz ungünstig erwischt?",
+      ),
+    [fillName],
+  );
+  // Opener 2 / Bridge — JETZT erst der Grund + erste Bedarfsfrage. Fallback-Zeile,
+  // bis die KI (die den Kundensatz kennt) eine passendere liefert.
+  const bridgeLine = useMemo(() => {
+    const reason = lead.website
+      ? "Ich war kurz auf Ihrer Seite — da ist mir was aufgefallen, das Sie Aufträge kostet."
+      : "Ihr Betrieb ist online kaum zu finden — und genau das kostet Sie Aufträge.";
+    return fillName(`${reason} Wie kommen bei Ihnen aktuell die meisten Neukunden rein?`);
+  }, [lead.website, fillName]);
+
+  // Welche Zeile die große Karte zeigt — KI schlägt alles, sonst je Stufe.
+  const stageLine =
+    stage === "opener1" ? opener1Line : stage === "bridge" ? bridgeLine : hookLine;
+  const showListen = stage === "warten" && !aiLine;
 
   // Nein-Gradient aus dem letzten Kunden-Satz (für das Coach-Panel).
   const neinTyp = useMemo(
@@ -474,6 +506,7 @@ export function SouffleurRoom({
         tradeContext: tradeCard ? buildTradeContext(tradeCard) : null,
         neinTyp: nein,
         phase: phaseRef.current,
+        stage: stageRef.current,
         elapsedSec: elapsedRef.current,
         repName: repNameRef.current.trim() || null,
         profile: profileRef.current,
@@ -553,11 +586,16 @@ export function SouffleurRoom({
       aiDebounceRef.current = setTimeout(() => {
         aiDebounceRef.current = null;
         if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
+        // Einstiegs-Treppe: GENAU eine Stufe pro Kunden-Redezug. Erste Reaktion
+        // auf den Opener → Bridge; Antwort auf die Bridge → freies Gespräch.
+        if (stageRef.current === "opener1" || stageRef.current === "warten")
+          goStage("bridge");
+        else if (stageRef.current === "bridge") goStage("frei");
         setConvoState("denkt");
         askAiNow();
       }, 500);
     },
-    [askAiNow, pushTurn],
+    [askAiNow, pushTurn, goStage],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
@@ -1041,7 +1079,7 @@ export function SouffleurRoom({
   }
 
   function copyLine() {
-    navigator.clipboard?.writeText(aiLine ?? hookLine).then(() => {
+    navigator.clipboard?.writeText(aiLine ?? stageLine).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     });
@@ -1095,7 +1133,20 @@ export function SouffleurRoom({
       return;
     if (e.code === "Space") {
       e.preventDefault();
-      askAI();
+      // Im Einstieg = „nächster Schritt", erst im freien Gespräch = neuer KI-Satz.
+      if (stageRef.current === "opener1") {
+        goStage("warten");
+      } else if (stageRef.current === "warten") {
+        goStage("bridge");
+        setConvoState("denkt");
+        askAiNow();
+      } else if (stageRef.current === "bridge") {
+        goStage("frei");
+        setConvoState("denkt");
+        askAiNow();
+      } else {
+        askAI();
+      }
     } else if (e.key.toLowerCase() === "c") {
       copyLine();
     } else if (e.key === "1") {
@@ -1324,6 +1375,38 @@ export function SouffleurRoom({
           </div>
         </div>
 
+        {/* Einstiegs-Treppe — fester Anfang, damit ein Anfänger nie hängt */}
+        {stage !== "frei" && (
+          <div className="mb-3 flex items-center gap-2">
+            {STAGES.filter((s) => s.key !== "frei").map((s) => {
+              const order = ["opener1", "warten", "bridge"];
+              const here = order.indexOf(stage);
+              const mine = order.indexOf(s.key);
+              const active = s.key === stage;
+              const done = mine < here;
+              return (
+                <div key={s.key} className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full transition",
+                      active
+                        ? "bg-[var(--color-copper-500)]"
+                        : done
+                          ? "bg-[var(--color-copper-300)]"
+                          : "bg-[var(--color-surface-3)]",
+                    )}
+                  />
+                  {active && (
+                    <span className="text-[11.5px] font-semibold text-[var(--color-fg-dim)]">
+                      {s.tagline}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {/* DER Satz — wörtlich ablesen */}
         <div
           className={cn(
@@ -1337,8 +1420,13 @@ export function SouffleurRoom({
             {aiLine && (
               <span className="breathe h-2 w-2 shrink-0 rounded-full bg-[var(--color-copper-500)]" />
             )}
-            <span className="rounded-full bg-[#0a3977] px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white">
-              Jetzt wörtlich sagen
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.12em] text-white",
+                showListen ? "bg-[#1a7f37]" : "bg-[#0a3977]",
+              )}
+            >
+              {showListen ? "Jetzt zuhören" : "Jetzt wörtlich sagen"}
             </span>
             {convoState === "kunde" && (
               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1a7f37]">
@@ -1373,9 +1461,19 @@ export function SouffleurRoom({
             </button>
           </div>
 
-          <p className="mt-3 text-[28px] font-bold leading-[1.12] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[34px] md:text-[40px]">
-            {aiLine ?? hookLine}
-          </p>
+          {showListen ? (
+            <p className="mt-3 text-[24px] font-bold leading-[1.15] tracking-[-0.02em] text-[#1a7f37] sm:text-[28px] md:text-[32px]">
+              Jetzt zuhören. Lass ihn reden.
+              <span className="mt-1 block text-[14px] font-medium text-[var(--color-fg-mute)]">
+                Stille ist okay — nicht reinquatschen. Sobald er antwortet,
+                kommt dein nächster Satz.
+              </span>
+            </p>
+          ) : (
+            <p className="mt-3 text-[28px] font-bold leading-[1.12] tracking-[-0.028em] text-[var(--color-fg)] sm:text-[34px] md:text-[40px]">
+              {aiLine ?? stageLine}
+            </p>
+          )}
 
           {!aiLine && move.alts.length > 0 && (
             <p className="mt-3 text-[14px] leading-snug text-[var(--color-fg-mute)]">
