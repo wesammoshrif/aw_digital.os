@@ -145,7 +145,19 @@ export class EasybellSipClient {
     console.log("[SIP] dialing → sip:***" + e164.slice(-3) + "@" + domain);
 
     const session = this.ua.call(target, {
-      mediaConstraints: { audio: true, video: false },
+      // Sende-Mikro bewusst entzerren: Echo-Unterdrückung AN (gegen Lautsprecher-
+      // Bleed), aber noiseSuppression + autoGainControl AUS — die fressen sonst
+      // Wortanfänge/Konsonanten und lassen den Pegel pumpen. Genau dieses Audio
+      // hört der Kunde. Mono reicht fürs Telefonband.
+      mediaConstraints: {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: 1,
+        },
+        video: false,
+      },
       rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
       pcConfig: {
         iceServers: [

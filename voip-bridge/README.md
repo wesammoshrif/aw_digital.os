@@ -1,5 +1,21 @@
 # AW Digital OS — VoIP-Brücke (Vapi-Nachbau mit Asterisk)
 
+> **⚠️ KORREKTUR / echter Stand (24.06.2026):** Die laufende Brücke registriert sich
+> NICHT am SIP-Trunk `voip.easybell.de` (der gibt 401), sondern an der easybell
+> **Cloud-PBX `pbx.easybell.de`** (User `CPBX-…`). Die `pjsip.conf` unten zeigt noch
+> das alte Trunk-Beispiel — beim echten Setup `server_uri`/`client_uri`/`from_domain`/
+> `match` auf `pbx.easybell.de` und Auth-User/PW auf die Cloud-PBX-Daten setzen.
+>
+> **Co-Host auf einem VPS mit bestehendem Nginx (statt eigenem VPS):**
+> - Cert NICHT mit `certbot --standalone` (Port 80 belegt) → `certbot certonly --nginx`.
+> - Der Container läuft als NON-root → gemountete Dateien müssen lesbar sein:
+>   `pjsip.conf` auf `chmod 644`, und die LE-Certs nach `/opt/aw-voip/keys/` kopieren
+>   (`chmod 644`) + von dort mounten (NICHT direkt aus `/etc/letsencrypt`, sonst
+>   „Permission denied" auf den privkey → TLS bindet nicht auf 8089).
+> - Renewal-Hook unter `/etc/letsencrypt/renewal-hooks/deploy/` kopiert das Cert nach
+>   + `docker compose restart`.
+
+
 Das hier ist die **WebRTC↔SIP-Brücke**, die genau das macht, wofür Vapi Geld nimmt:
 Sie registriert deinen **easybell-SIP-Trunk** (`voip.easybell.de`) und gibt dem
 Browser-Dialer im Cockpit einen sicheren **WSS-Endpunkt**. Damit telefonierst du
