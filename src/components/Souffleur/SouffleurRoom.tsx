@@ -962,6 +962,15 @@ export function SouffleurRoom({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tastatur-Shortcuts — Hände am Gespräch statt an der Maus. Die konkrete
+  // Aktion steht in onShortcutRef (wird unten nach den Funktionen gesetzt).
+  const onShortcutRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => onShortcutRef.current(e);
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+
   // ── Manueller KI-Tipp (Button) ──────────────────────────────────
   async function askAI() {
     setAiBusy(true);
@@ -1073,6 +1082,30 @@ export function SouffleurRoom({
     //    auch bei höherer Latenz/CPU-Last Luft, damit kein verwaister Anruf bleibt.
     setTimeout(() => window.close(), 500);
   }
+
+  // Shortcut-Aktionen: Leertaste=neuer KI-Satz, C=kopieren, 1=Termin,
+  // 2=Rückruf, Esc=auflegen. (Ignoriert Eingabefelder.)
+  onShortcutRef.current = (e: KeyboardEvent) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target as HTMLElement | null;
+    if (
+      t &&
+      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+    )
+      return;
+    if (e.code === "Space") {
+      e.preventDefault();
+      askAI();
+    } else if (e.key.toLowerCase() === "c") {
+      copyLine();
+    } else if (e.key === "1") {
+      disposition("appointment");
+    } else if (e.key === "2") {
+      disposition("callback");
+    } else if (e.key === "Escape") {
+      disposition("hangup");
+    }
+  };
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");

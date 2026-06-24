@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   GOLDEN_RULES,
   NEIN_GRADIENTEN,
+  SEASONAL_HOOKS,
   classifyNein,
   type NeinTyp,
 } from "@/lib/souffleur/strategies";
@@ -84,6 +85,13 @@ export async function POST(req: NextRequest) {
     : "";
   // Cold-Calling-Profil: Stil-Vorgaben des Beraters (Freundlichkeit/Tempo/Anrede).
   const profileBlock = body.profile ? `\n${profileToHints(body.profile)}\n` : "";
+  // Saison-Aufhänger (Dringlichkeit „jetzt ist die Zeit") — nur wenn er den
+  // Termin-Push stützt; fertiger Content, kostet nichts.
+  const month = new Date().getMonth() + 1;
+  const season = Object.values(SEASONAL_HOOKS).find((s) => s.months.includes(month));
+  const seasonBlock = season
+    ? `\nSaison-Kontext (nur einbauen, wenn es den Termin natürlich stützt): ${season.hook}\n`
+    : "";
 
   // Voller Dialog-Verlauf (Berater + Kunde im Wechsel).
   const turns = Array.isArray(body.turns) ? body.turns.slice(-8) : [];
@@ -96,7 +104,7 @@ export async function POST(req: NextRequest) {
 
   const userPrompt = `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${repNote}${profileBlock}
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${repNote}${profileBlock}${seasonBlock}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 
