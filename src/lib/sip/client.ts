@@ -184,6 +184,37 @@ export class EasybellSipClient {
     this.session = session;
     this.emit("status", "ringing");
 
+    // ── ICE-Gathering-Cap (Kernfix „createLocalDescription hängt") ───────
+    // jssip 3.x sendet das INVITE erst, wenn ICE-Gathering vollständig ist
+    // (non-trickle, KEIN Timeout in der Lib). Hakt STUN/UDP im Netz, wird nie
+    // `complete` gemeldet → createLocalDescription() hängt → nie ein INVITE.
+    // jssip gibt pro Kandidat eine ready()-Funktion mit, die das Senden sofort
+    // anstößt. Wir feuern sie, sobald eine srflx/relay-(STUN/TURN-)Adresse da
+    // ist, spätestens kurz nach den Host-Kandidaten.
+    let iceReady: (() => void) | null = null;
+    let iceFired = false;
+    let iceTimer: ReturnType<typeof setTimeout> | null = null;
+    const fireIce = () => {
+      if (iceFired || !iceReady) return;
+      iceFired = true;
+      if (iceTimer) clearTimeout(iceTimer);
+      console.log("[SIP] ICE-Gathering abgekürzt → INVITE wird gesendet");
+      iceReady();
+    };
+    session.on("icecandidate", (e: unknown) => {
+      const ev = e as { candidate?: RTCIceCandidate; ready: () => void };
+      iceReady = ev.ready;
+      const type = ev.candidate?.type;
+      if (type === "srflx" || type === "relay") {
+        fireIce();
+        return;
+      }
+      // Nur Host-Kandidaten bisher: kurzes Fenster auf srflx, dann trotzdem
+      // senden (die Brücke hat eine öffentliche IP → Host-Kandidat reicht).
+      if (iceTimer) clearTimeout(iceTimer);
+      iceTimer = setTimeout(fireIce, 1200);
+    });
+
     // ── Strategie 1: peerconnection-Event + track-Event ──────────────────
     session.on("peerconnection", (e: unknown) => {
       const pc = (e as { peerconnection: RTCPeerConnection }).peerconnection;
