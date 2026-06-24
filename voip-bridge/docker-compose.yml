@@ -17,6 +17,11 @@ services:
       - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
       - ./asterisk/http.conf:/etc/asterisk/http.conf:ro
       - ./asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
-      # Let's-Encrypt-Zertifikate (siehe README, Schritt 3):
-      - /etc/letsencrypt/live/CHANGE_ME_DOMAIN/fullchain.pem:/etc/asterisk/keys/fullchain.pem:ro
-      - /etc/letsencrypt/live/CHANGE_ME_DOMAIN/privkey.pem:/etc/asterisk/keys/privkey.pem:ro
+      # Let's-Encrypt-Zertifikate: NICHT direkt aus /etc/letsencrypt mounten —
+      # der Container läuft non-root und bekommt sonst "Permission denied" auf
+      # den privkey, dann bindet TLS nicht auf 8089. Stattdessen Certs nach
+      # /opt/aw-voip/keys/ kopieren (chmod 644) und von dort mounten. Ein
+      # certbot deploy-hook (/etc/letsencrypt/renewal-hooks/deploy/aw-voip.sh)
+      # kopiert sie bei jeder Erneuerung neu dorthin.
+      - /opt/aw-voip/keys/fullchain.pem:/etc/asterisk/keys/fullchain.pem:ro
+      - /opt/aw-voip/keys/privkey.pem:/etc/asterisk/keys/privkey.pem:ro

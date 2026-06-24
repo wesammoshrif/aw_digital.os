@@ -183,20 +183,21 @@ liefert kein WS-Upgrade). Reale Wege:
 
 1. **`tel:`-Link + Zoiper** auf dem **Trunk** (`voip.easybell.de` + Trunk-Daten) —
    gratis, funktioniert, Souffleur hört per System-Audio mit.
-2. **Eigene Asterisk-Brücke** — **deployed und aktiv** auf VPS `5.231.248.34`.
-   Registriert die easybell **Cloud-PBX** (nicht den SIP-Trunk!) und gibt dem
-   Browser ein WSS-Gateway via Let's Encrypt TLS (`5-231-248-34.sslip.io`).
-   Details: `voip-bridge/README.md`. Konfiguration live unter `/opt/aw-voip-bridge/`
-   auf dem VPS.
+2. **Eigene Asterisk-Brücke** — **deployed und aktiv** seit 24.06.2026 auf dem
+   **Hostinger-VPS `187.124.190.135`** (Co-Host neben der App, NICHT mehr Aschrafs
+   `5.231.248.34`). Registriert die easybell **Cloud-PBX** (nicht den SIP-Trunk!)
+   und gibt dem Browser ein WSS-Gateway via Let's Encrypt TLS
+   (`wss://voip.awcode.de:8089/ws`). Details: `voip-bridge/README.md`.
+   Konfiguration live unter `/opt/aw-voip/` auf dem VPS.
 
-**Asterisk-Status (Stand 14.06.2026):**
+**Asterisk-Status (live geprüft 24.06.2026):**
 - easybell Cloud-PBX (`CPBX-g36sfsb0-000000@pbx.easybell.de`) → **Registered ✅**
 - SIP-Trunk (`voip.easybell.de`) → 401 abgelehnt (Cloud-PBX ist der richtige Weg)
-- Browser-Registrierung (`cockpit`-Endpoint, WSS) → **funktioniert ✅**
-- Ausgehende Anrufe Browser → Telefon → **funktioniert ✅**
-- Audio browser→Telefon → **funktioniert ✅**
-- Audio Telefon→Browser → **letzter offener Punkt** (Fix deployed, noch nicht
-  final verifiziert — siehe Session-Log unten)
+- Browser-Registrierung (`cockpit`-Endpoint, WSS) → **funktioniert ✅** (Log „Reachable")
+- Ausgehende Anrufe → **bis 24.06. NIE getestet**: die Brücke hatte 0 INVITEs, weil
+  der sichtbare „Anrufen"-Button im Cockpit ein toter `tel:`-Link war und der echte
+  SIP-Anruf als „experimentell" versteckt lag. `SipDialer.tsx` umgebaut (SIP primär).
+  → echter Ende-zu-Ende-Testanruf steht weiter aus.
 
 Cockpit-seitig ist alles verdrahtet: `/api/sip/config` bevorzugt die Asterisk-Brücke
 (`ASTERISK_*`-Env), sonst easybell-Fallback.
@@ -207,7 +208,13 @@ Cockpit-seitig ist alles verdrahtet: `/api/sip/config` bevorzugt die Asterisk-Br
 
 ### Asterisk VoIP-Brücke — Setup & Deploy
 
-**VPS:** `5.231.248.34` (root / Zugangsdaten separat aufbewahren)
+> **VERALTET — beschreibt die alte Brücke auf `5.231.248.34`.** Seit 24.06.2026
+> läuft die Brücke auf dem Hostinger-VPS `187.124.190.135` unter `/opt/aw-voip/`,
+> WSS `wss://voip.awcode.de:8089/ws`, Certs aus `/opt/aw-voip/keys/`,
+> `external_media_address=187.124.190.135`. Das Setup unten gilt sinngemäß weiter,
+> nur Pfade/IP/Domain ersetzen.
+
+**VPS (alt):** `5.231.248.34` (root / Zugangsdaten separat aufbewahren)
 **Docker-Setup unter** `/opt/aw-voip-bridge/`:
 ```
 docker-compose.yml          # andrius/asterisk:latest, ports 8089/5060/10000-10200
