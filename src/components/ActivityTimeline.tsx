@@ -80,14 +80,14 @@ export function ActivityTimeline({ activities }: { activities: Activity[] }) {
             {/* Payload Details */}
             {a.payload && typeof a.payload === "object" && (
               <div className="mt-1 space-y-1">
-                {(a.payload as any).note && (
+                {(a.payload as { note?: string }).note && (
                   <p className="rounded-md bg-[var(--color-surface-2)] px-2 py-1.5 text-[12px] italic text-[var(--color-fg-dim)]">
-                    „{(a.payload as any).note}"
+                    „{(a.payload as { note?: string }).note}&rdquo;
                   </p>
                 )}
-                {(a.payload as any).nextStep && (
+                {(a.payload as { nextStep?: string }).nextStep && (
                   <p className="text-[11px] text-[var(--color-fg-mute)]">
-                    Nächster Schritt: <span className="text-[var(--color-fg-dim)]">{(a.payload as any).nextStep}</span>
+                    Nächster Schritt: <span className="text-[var(--color-fg-dim)]">{(a.payload as { nextStep?: string }).nextStep}</span>
                   </p>
                 )}
               </div>

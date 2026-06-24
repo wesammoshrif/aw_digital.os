@@ -119,7 +119,7 @@ export default async function AuditsPage() {
 
                 {a.hookText && (
                   <div className="mt-3 rounded-md border-l-2 border-[var(--color-copper-500)] bg-[#eff5ff] py-2 pl-3 pr-3 text-[12.5px] italic leading-relaxed text-[var(--color-copper-700)]">
-                    „{a.hookText}"
+                    „{a.hookText}&rdquo;
                   </div>
                 )}
               </div>

@@ -223,7 +223,7 @@ function RunAuditInner() {
 
           {result.hookText && (
             <p className="mt-5 rounded-md border-l-[3px] border-[var(--color-copper-500)] bg-[#eff5ff] py-2.5 pl-3.5 pr-4 text-[13.5px] italic leading-relaxed text-[var(--color-copper-700)]">
-              „{result.hookText}"
+              „{result.hookText}&rdquo;
             </p>
           )}
 

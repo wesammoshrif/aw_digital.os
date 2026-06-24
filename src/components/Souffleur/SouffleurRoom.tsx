@@ -117,6 +117,8 @@ export function SouffleurRoom({
   const [micAsCustomer, setMicAsCustomer] = useState(false);
   const [showShareGuide, setShowShareGuide] = useState(false);
   const [showVoicemail, setShowVoicemail] = useState(false);
+  // Mailbox-Countdown: läuft, solange das Voicemail-Overlay offen ist (15 → 0).
+  const [vmSecs, setVmSecs] = useState(15);
   const [briefingOpen, setBriefingOpen] = useState(true);
   // Einstiegs-Treppe (opener1 → warten → bridge → frei): feste Schiene für den
   // Gesprächsanfang, bevor die freie Phasen-Logik übernimmt. stageRef spiegelt
@@ -270,6 +272,16 @@ export function SouffleurRoom({
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, [callEnded]);
+
+  // Mailbox-Countdown: tickt nur, solange das Overlay offen ist; stoppt bei 0.
+  useEffect(() => {
+    if (!showVoicemail) return;
+    const t = setInterval(
+      () => setVmSecs((s) => (s <= 1 ? 0 : s - 1)),
+      1000,
+    );
+    return () => clearInterval(t);
+  }, [showVoicemail]);
 
   // ── Mikro via Deepgram (zuverlässig, gleicher Anbieter wie Kunde) ──
   const startMic = useCallback(async () => {
@@ -1295,7 +1307,19 @@ export function SouffleurRoom({
             <div className="mb-2 flex items-center gap-2">
               <Volume2 className="h-4 w-4 text-[var(--color-copper-600)]" />
               <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-copper-700)]">
-                Mailbox — das jetzt vorlesen (~15 Sek.)
+                Mailbox — das jetzt vorlesen
+              </span>
+              <span
+                className={cn(
+                  "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-bold tabular-nums",
+                  vmSecs === 0
+                    ? "bg-[#ffeceb] text-[#d70015]"
+                    : vmSecs <= 5
+                      ? "bg-[#fff4e5] text-[#b25000]"
+                      : "bg-[#eef2ff] text-[#0a3977]",
+                )}
+              >
+                {vmSecs === 0 ? "Zeit um" : `${vmSecs}s`}
               </span>
             </div>
             <p className="rounded-[12px] bg-[#eff5ff] p-4 text-[16px] font-medium leading-relaxed text-[var(--color-fg)]">
@@ -2128,7 +2152,7 @@ export function SouffleurRoom({
                 key={d.key}
                 onClick={() =>
                   d.key === "voicemail"
-                    ? setShowVoicemail(true)
+                    ? (setVmSecs(15), setShowVoicemail(true))
                     : disposition(d.key)
                 }
                 className={cn(

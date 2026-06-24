@@ -49,6 +49,7 @@ const TYPE_META: Record<
     label: "SSL abgelaufen",
     icon: AlertTriangle,
     tone: "danger",
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     hook: (t) =>
       `Ihr SSL-Zertifikat ist abgelaufen — Browser blockieren die Seite. Das kostet jeden Tag Anfragen.`,
   },
@@ -128,7 +129,7 @@ export default async function TriggersPage() {
                       </div>
                     )}
                     <div className="mt-3 rounded-md border-l-2 border-[var(--color-copper-500)] bg-[#eff5ff] py-2 pl-3 pr-3 text-[12.5px] italic leading-relaxed text-[var(--color-copper-700)]">
-                      „{meta.hook(t.title)}"
+                      „{meta.hook(t.title)}&rdquo;
                     </div>
                   </div>
 

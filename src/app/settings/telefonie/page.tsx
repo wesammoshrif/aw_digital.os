@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Download,
-  ExternalLink,
 } from "lucide-react";
 
 export default function TelefonieSetupPage() {

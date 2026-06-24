@@ -130,6 +130,7 @@ async function main() {
   // Playwright lazy laden — Skript bricht nicht, wenn nicht installiert.
   // Non-literaler Specifier: tsc löst das Modul NICHT auf (kein TS2307,
   // playwright bleibt optionale Dev-Dependency).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let chromium: any;
   try {
     const pkg = "playwright";
@@ -274,6 +275,7 @@ async function main() {
 }
 
 // ── kleine DOM-Helfer ──────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function text(page: any, selector: string): Promise<string | null> {
   return page
     .locator(selector)

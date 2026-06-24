@@ -58,7 +58,7 @@ function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   // Plus merken, dann alle Nicht-Ziffern entfernen.
   const hadPlus = raw.trim().startsWith("+");
-  let digits = raw.replace(/[^\d]/g, "");
+  const digits = raw.replace(/[^\d]/g, "");
   if (!digits) return null;
 
   if (hadPlus) {

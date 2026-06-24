@@ -13,12 +13,10 @@ import {
   XCircle,
   AlertTriangle,
   CheckCircle2,
-  Mic,
   Pause,
-  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { ButtonLink, Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/db/schema";
 import { applyCadence, type Disposition } from "@/lib/cadence";
@@ -54,7 +52,7 @@ export function CallMode({
 }) {
   const router = useRouter();
   const [active, setActive] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [recording] = useState(false);
   const [note, setNote] = useState("");
   const [lastDispo, setLastDispo] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);

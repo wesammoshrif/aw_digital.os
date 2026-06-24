@@ -93,6 +93,7 @@ export async function findLeads(q: FinderQuery): Promise<FinderResponse> {
   return {
     ok: true,
     leads,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     sources: sourceResults.map(({ leads: _leads, ...rest }) => rest),
     total: leads.length,
   };
