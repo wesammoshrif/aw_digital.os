@@ -1421,6 +1421,7 @@ export function SouffleurRoom({
             onRemoteStream={(stream) => handleSipRemoteStream(stream)}
             onStatus={handleSipStatus}
             controlRef={sipControlRef}
+            getLocalStream={() => micStreamRef.current}
           />
         </div>
 

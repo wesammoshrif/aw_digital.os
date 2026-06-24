@@ -129,7 +129,7 @@ export class EasybellSipClient {
     ua.start();
   }
 
-  async call(targetNumber: string): Promise<void> {
+  async call(targetNumber: string, localStream?: MediaStream | null): Promise<void> {
     if (!this.ua) throw new Error("SIP nicht verbunden");
     this.remoteAttached = false;
 
@@ -144,20 +144,31 @@ export class EasybellSipClient {
     // PII-Redaction: volle Rufnummer NICHT loggen, nur die letzten 3 Ziffern.
     console.log("[SIP] dialing → sip:***" + e164.slice(-3) + "@" + domain);
 
+    // Mikro: WENN ein bereits offener Stream übergeben wurde (Deepgram hält ihn
+    // schon), den NUTZEN — sonst öffnet jssip ein zweites getUserMedia und
+    // createLocalDescription() hängt (Mikro doppelt belegt → kein INVITE).
+    // Fallback (kein Stream): jssip holt selbst, NS/AGC aus, Echo an, mono.
+    const useStream = !!(localStream && localStream.getAudioTracks().length > 0);
+    console.log(
+      useStream
+        ? "[SIP] nutze vorhandenen Mikro-Stream (kein zweites getUserMedia)"
+        : "[SIP] kein geteilter Stream → eigenes getUserMedia",
+    );
+    const mediaOpt = useStream
+      ? { mediaStream: localStream }
+      : {
+          mediaConstraints: {
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: false,
+              autoGainControl: false,
+              channelCount: 1,
+            },
+            video: false,
+          },
+        };
     const session = this.ua.call(target, {
-      // Sende-Mikro bewusst entzerren: Echo-Unterdrückung AN (gegen Lautsprecher-
-      // Bleed), aber noiseSuppression + autoGainControl AUS — die fressen sonst
-      // Wortanfänge/Konsonanten und lassen den Pegel pumpen. Genau dieses Audio
-      // hört der Kunde. Mono reicht fürs Telefonband.
-      mediaConstraints: {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: false,
-          autoGainControl: false,
-          channelCount: 1,
-        },
-        video: false,
-      },
+      ...mediaOpt,
       rtcOfferConstraints: { offerToReceiveAudio: true, offerToReceiveVideo: false },
       pcConfig: {
         iceServers: [

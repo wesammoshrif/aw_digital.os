@@ -27,12 +27,16 @@ export function SipDialer({
   onStatus,
   autoDial = false,
   controlRef,
+  getLocalStream,
 }: {
   defaultNumber?: string;
   onRemoteStream?: (stream: MediaStream | null) => void;
   onStatus?: (status: SipStatus) => void;
   autoDial?: boolean;
   controlRef?: MutableRefObject<SipControl | null>;
+  // Liefert den bereits offenen Mikro-Stream (Deepgram), damit der Anruf NICHT
+  // ein zweites getUserMedia macht (sonst hängt createLocalDescription).
+  getLocalStream?: () => MediaStream | null;
 }) {
   const [number, setNumber] = useState(defaultNumber ?? "");
   const [status, setStatus] = useState<SipStatus>("idle");
@@ -84,7 +88,7 @@ export function SipDialer({
       await client.connect(cfgRes.cfg);
       setTimeout(async () => {
         try {
-          await clientRef.current?.call(number);
+          await clientRef.current?.call(number, getLocalStream?.() ?? null);
         } catch (err) {
           setStatus("error");
           setStatusMsg(String(err));
