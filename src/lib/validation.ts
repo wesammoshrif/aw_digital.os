@@ -23,8 +23,26 @@ export const leadCreateSchema = z.object({
   notes: z.string().max(5000).optional(),
 });
 
+export const emailSendSchema = z.object({
+  leadId: z.string().min(1).max(100),
+  kind: z.enum([
+    "followup_call",
+    "voicemail",
+    "appointment_confirm",
+    "audit_result",
+  ]),
+  subject: z.string().min(1).max(300),
+  text: z.string().max(20_000).optional(),
+  html: z.string().max(200_000).optional(),
+  // Einwilligung: der Kunde hat im Anruf um die Zusendung gebeten (UWG §7).
+  consentFromCall: z.boolean(),
+  callId: z.string().max(200).nullable().optional(),
+  auditId: z.string().max(100).nullable().optional(),
+});
+
 export const leadPatchSchema = z.object({
   status: optStr,
+  email: z.string().email().max(200).nullable().optional(),
   attempts: z.number().int().min(0).max(10_000).optional(),
   // Atomares Inkrement statt absoluter Wert (verhindert Lost-Update bei
   // veraltetem Client-Stand / Doppel-Dispo). Hat Vorrang vor `attempts`.

@@ -45,6 +45,7 @@ export async function PATCH(
 
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (body.status) patch.status = body.status;
+    if (body.email !== undefined) patch.email = body.email;
     // Atomares Inkrement hat Vorrang (kein Lost-Update bei Stale/Doppel-Dispo).
     if (body.attemptsIncrement) {
       patch.attempts = sql`${leads.attempts} + 1`;

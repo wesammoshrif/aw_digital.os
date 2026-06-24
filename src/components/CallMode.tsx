@@ -14,9 +14,11 @@ import {
   AlertTriangle,
   CheckCircle2,
   Pause,
+  Mail,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { EmailCompose } from "@/components/EmailCompose";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/db/schema";
 import { applyCadence, type Disposition } from "@/lib/cadence";
@@ -59,6 +61,7 @@ export function CallMode({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
   const [apptPicking, setApptPicking] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [apptDate, setApptDate] = useState("");
   const popupRef = useRef<Window | null>(null);
   // Anruf-Start für die Dauer-/Erreichungs-Statistik (connectRate).
@@ -506,6 +509,27 @@ export function CallMode({
             );
           })}
         </div>
+
+        <button
+          onClick={() => setEmailOpen(true)}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[var(--color-hairline)] px-4 py-2 text-[12.5px] font-medium text-[var(--color-fg-dim)] transition hover:bg-[var(--color-surface-2)]"
+        >
+          <Mail className="h-3.5 w-3.5" /> Mail an Kunde schicken
+        </button>
+
+        {emailOpen && (
+          <EmailCompose
+            lead={{
+              id: lead.id,
+              contactName: lead.contactName,
+              company: lead.company,
+              email: lead.email,
+              website: lead.website,
+            }}
+            callId={lastCallDataRef.current?.callId ?? null}
+            onClose={() => setEmailOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
