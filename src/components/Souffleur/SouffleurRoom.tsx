@@ -41,6 +41,12 @@ import {
 } from "@/lib/souffleur/phases";
 import { TEST_SCRIPTS, type ScriptStep } from "@/lib/souffleur/testScripts";
 import {
+  loadProfile,
+  saveProfile,
+  DEFAULT_PROFILE,
+  type ColdCallProfile,
+} from "@/lib/souffleur/profile";
+import {
   getTradeCard,
   fillTradeHook,
   buildTradeContext,
@@ -126,6 +132,20 @@ export function SouffleurRoom({
     try {
       setRepName(localStorage.getItem("aw_rep_name") ?? "");
     } catch {}
+  }, []);
+
+  // Cold-Calling-Profil (Stil des KI-Dirigenten) — pro Browser gespeichert.
+  const [profile, setProfile] = useState<ColdCallProfile>(DEFAULT_PROFILE);
+  const profileRef = useRef<ColdCallProfile>(DEFAULT_PROFILE);
+  useEffect(() => {
+    setProfile(loadProfile());
+  }, []);
+  const updateProfile = useCallback((patch: Partial<ColdCallProfile>) => {
+    setProfile((prev) => {
+      const next = { ...prev, ...patch };
+      saveProfile(next);
+      return next;
+    });
   }, []);
   const testTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micAsCustomerRef = useRef(false);
@@ -456,6 +476,7 @@ export function SouffleurRoom({
         phase: phaseRef.current,
         elapsedSec: elapsedRef.current,
         repName: repNameRef.current.trim() || null,
+        profile: profileRef.current,
       }),
     })
       .then(async (res) => {
@@ -842,6 +863,7 @@ export function SouffleurRoom({
   elapsedRef.current = elapsed;
   phaseRef.current = phase;
   repNameRef.current = repName;
+  profileRef.current = profile;
   useEffect(() => {
     const t = setInterval(() => {
       if (callEndedRef.current) {
@@ -960,6 +982,7 @@ export function SouffleurRoom({
           phase: phaseRef.current,
           elapsedSec: elapsedRef.current,
           repName: repNameRef.current.trim() || null,
+          profile: profileRef.current,
         }),
       });
       if ((res.headers.get("content-type") || "").includes("application/json")) {
@@ -1446,6 +1469,62 @@ export function SouffleurRoom({
                 + Briefing einblenden
               </button>
             )}
+
+            {/* Cold-Calling-Profil — Stil des KI-Dirigenten (pro Browser gespeichert) */}
+            <div className="mb-3 rounded-[12px] border border-[var(--color-hairline)] bg-white p-3">
+              <div className="mb-2 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-[var(--color-fg-mute)]">
+                Cold-Calling-Profil — so formuliert die KI
+              </div>
+              <div className="space-y-2">
+                {(
+                  [
+                    { k: "freundlichkeit", label: "Ton", opts: [["direkt", "direkt"], ["ausgewogen", "ausgewogen"], ["herzlich", "herzlich"]] },
+                    { k: "genauigkeit", label: "Tempo", opts: [["locker", "locker"], ["ausgewogen", "ausgewogen"], ["praezise", "präzise"]] },
+                    { k: "anrede", label: "Anrede", opts: [["sie", "Sie"], ["du", "Du"]] },
+                  ] as const
+                ).map((row) => (
+                  <div key={row.k} className="flex items-center gap-2">
+                    <span className="w-12 shrink-0 text-[10.5px] text-[var(--color-fg-mute)]">{row.label}</span>
+                    <div className="flex flex-wrap gap-1">
+                      {row.opts.map(([val, lbl]) => (
+                        <button
+                          key={val}
+                          onClick={() => updateProfile({ [row.k]: val } as Partial<ColdCallProfile>)}
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[11px] font-medium transition",
+                            profile[row.k] === val
+                              ? "bg-[var(--color-copper-500)] text-white"
+                              : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[#eff5ff]",
+                          )}
+                        >
+                          {lbl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <span className="w-12 shrink-0 text-[10.5px] text-[var(--color-fg-mute)]">Humor</span>
+                  <button
+                    onClick={() => updateProfile({ humor: !profile.humor })}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[11px] font-medium transition",
+                      profile.humor
+                        ? "bg-[var(--color-copper-500)] text-white"
+                        : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[#eff5ff]",
+                    )}
+                  >
+                    {profile.humor ? "ein" : "aus"}
+                  </button>
+                </div>
+                <input
+                  value={profile.stilnotiz ?? ""}
+                  onChange={(e) => updateProfile({ stilnotiz: e.target.value })}
+                  placeholder="Eigene Stil-Notiz (optional), z.B. 10 Jahre Garantie erwähnen"
+                  className="w-full rounded-[6px] border border-[var(--color-hairline)] bg-[var(--color-surface)]/40 px-2 py-1 text-[12px] text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+                />
+              </div>
+            </div>
 
             {/* Berater-Name + Power-Fragen + Nein-Gradient */}
             <div className="grid gap-3 md:grid-cols-3">

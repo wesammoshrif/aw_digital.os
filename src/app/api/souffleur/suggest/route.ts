@@ -20,6 +20,7 @@ import {
   type NeinTyp,
 } from "@/lib/souffleur/strategies";
 import { isPhase, phaseGuidance, type Phase } from "@/lib/souffleur/phases";
+import { profileToHints } from "@/lib/souffleur/profile";
 import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 
@@ -81,6 +82,8 @@ export async function POST(req: NextRequest) {
   const repNote = body.repName
     ? `\nName des Beraters (in [Name] einsetzen): ${body.repName}\n`
     : "";
+  // Cold-Calling-Profil: Stil-Vorgaben des Beraters (Freundlichkeit/Tempo/Anrede).
+  const profileBlock = body.profile ? `\n${profileToHints(body.profile)}\n` : "";
 
   // Voller Dialog-Verlauf (Berater + Kunde im Wechsel).
   const turns = Array.isArray(body.turns) ? body.turns.slice(-8) : [];
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   const userPrompt = `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${repNote}
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${phaseBlock}${repNote}${profileBlock}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 

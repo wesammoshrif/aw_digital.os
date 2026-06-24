@@ -119,6 +119,16 @@ export const souffleurSuggestSchema = z.object({
     )
     .max(20)
     .optional(),
+  // Cold-Calling-Profil: Stil-Vorgaben für den KI-Dirigenten.
+  profile: z
+    .object({
+      freundlichkeit: z.enum(["direkt", "ausgewogen", "herzlich"]),
+      genauigkeit: z.enum(["locker", "ausgewogen", "praezise"]),
+      anrede: z.enum(["sie", "du"]),
+      humor: z.boolean(),
+      stilnotiz: z.string().max(300).optional(),
+    })
+    .optional(),
 });
 
 export const souffleurSummarySchema = z.object({
