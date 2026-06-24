@@ -184,7 +184,15 @@ export async function listCalls() {
 export async function callStats() {
   const calls = await listCalls();
   const total = calls.length;
-  const connected = calls.filter((c) => (c.durationSec ?? 0) > 0).length;
+  // Ehrliche Connect-Rate über die DISPO (wer wirklich abgehoben hat) statt
+  // durationSec>0 — beim tel:-Pfad läuft der Timer auch bei no_answer mit.
+  const NOT_REACHED = new Set([
+    "no_answer",
+    "voicemail",
+    "busy",
+    "wrong_number",
+  ]);
+  const connected = calls.filter((c) => !NOT_REACHED.has(c.dispo ?? "")).length;
   const appointments = calls.filter((c) => c.dispo === "appointment").length;
   const interested = calls.filter((c) => c.dispo === "interested").length;
   const totalDuration = calls.reduce((s, c) => s + (c.durationSec ?? 0), 0);
