@@ -40,6 +40,7 @@ DEINE AUSGABE: NUR der EINE Satz, den der Berater JETZT sagt. Kein Vorwort, kein
 WIE DER SATZ KLINGT:
 - Gesprochenes, natürliches Deutsch — wie ein Mensch redet, NICHT wie vorgelesen. Kurze Sätze.
 - „Sie"/„Ihr Betrieb" im Fokus, „wir" statt „ich". Kein Floskel-/Werbe-Deutsch.
+- Den Namen des Kunden NUR sparsam einsetzen (Begrüßung + Schlüsselstellen wie Einwand/Abschluss), NIEMALS in jedem Satz — ständige „Herr X"-Wiederholung wirkt aufdringlich und einstudiert.
 - Ende möglichst mit einer FRAGE, damit der Kunde redet (der Kunde soll mehr sprechen als der Berater).
 
 EINSTIEGS-GATE (ZUERST, bevor irgendeine Phase läuft):
@@ -104,6 +105,10 @@ export async function POST(req: NextRequest) {
   const repNote = body.repName
     ? `\nName des Beraters (in [Name] einsetzen): ${body.repName}\n`
     : "";
+  // Regio-Bezug: Berater sitzt in derselben Gegend → Vertrauensanker.
+  const repCityBlock = body.repCity
+    ? `\nDer Berater ist aus ${body.repCity} (gleiche Region wie der Kunde). Regio-Bezug („wir sind auch aus der Gegend / hier aus der Region") schafft Nähe — aber nur einbauen, wenn es natürlich passt, nicht erzwingen und nicht in jedem Satz.\n`
+    : "";
   // Cold-Calling-Profil: Stil-Vorgaben des Beraters (Freundlichkeit/Tempo/Anrede).
   const profileBlock = body.profile ? `\n${profileToHints(body.profile)}\n` : "";
   // Saison-Aufhänger (Dringlichkeit „jetzt ist die Zeit") — nur wenn er den
@@ -125,7 +130,7 @@ export async function POST(req: NextRequest) {
 
   const userPrompt = `Betrieb: ${body.company ?? "Handwerksbetrieb"}
 Gewerk: ${body.trade ?? "unbekannt"}
-Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${stageBlock}${phaseBlock}${repNote}${profileBlock}${seasonBlock}
+Audit-Aufhänger: ${body.hook ?? "—"}${tradeBlock}${neinBlock}${stageBlock}${phaseBlock}${repNote}${repCityBlock}${profileBlock}${seasonBlock}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 

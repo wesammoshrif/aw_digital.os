@@ -84,7 +84,7 @@ const PHASE_STYLE: Record<Phase, string> = {
 //    webm/opus-containerisiert, Deepgram liest den Header selbst (Setzen würde
 //    den Stream zerschießen).
 const DG_URL =
-  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=500&smart_format=true&punctuate=true";
+  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=300&smart_format=true&punctuate=true";
 
 export function SouffleurRoom({
   lead,
@@ -143,6 +143,16 @@ export function SouffleurRoom({
   useEffect(() => {
     try {
       setRepName(localStorage.getItem("aw_rep_name") ?? "");
+    } catch {}
+  }, []);
+
+  // Region des Beraters (für Regio-Bezug im KI-Tipp). Default Bad Kreuznach,
+  // per localStorage „aw_rep_city" überschreibbar.
+  const repCityRef = useRef("Bad Kreuznach");
+  useEffect(() => {
+    try {
+      repCityRef.current =
+        localStorage.getItem("aw_rep_city")?.trim() || "Bad Kreuznach";
     } catch {}
   }, []);
 
@@ -407,7 +417,7 @@ export function SouffleurRoom({
               micRetryRef.current = 0; // gesunde Session → Reconnect-Budget zurück
               setTranscript((prev) => (prev + " " + text).slice(-1200));
               if (micAsCustomerRef.current) {
-                onCustomerText(text, "Mikro-Test");
+                onCustomerText(text, "Mikro-Test", !!d.speech_final);
               } else {
                 // Echtbetrieb: das eigene Mikro ist der Berater-Redezug.
                 onAdvisorText(text);
@@ -485,12 +495,16 @@ export function SouffleurRoom({
     [],
   );
 
+  // Solange > Date.now(): der Berater spricht/liest gerade vor → die KI-Zeile
+  // NICHT überschreiben (sonst „zieht die KI mitten im Sprechen den Text zurück").
+  const advisorActiveUntilRef = useRef(0);
   // Berater-Text (eigenes Mikro): als Berater-Redezug merken, KI NICHT triggern.
   const onAdvisorText = useCallback(
     (text: string) => {
       if (!text.trim()) return;
       pushTurn("advisor", text);
       lastSpeakerRef.current = "advisor";
+      advisorActiveUntilRef.current = Date.now() + 900;
       setConvoState("berater");
       // Berater redet → Kunde ist nicht mehr dran: Turn-End-Timer abbrechen.
       if (aiDebounceRef.current) {
@@ -566,9 +580,27 @@ export function SouffleurRoom({
       });
   }, [lead.auditHook, lead.company, lead.trade, tradeCard]);
 
+  // Turn-Ende: feuert GENAU eine KI-Anfrage pro Kunden-Redezug — aber NIE,
+  // während der Berater gerade vorliest (dann kurz vertagen statt die Zeile
+  // unter ihm wegzuziehen).
+  const fireTurnEnd = useCallback(() => {
+    aiDebounceRef.current = null;
+    if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
+    if (Date.now() < advisorActiveUntilRef.current) {
+      aiDebounceRef.current = setTimeout(fireTurnEnd, 250);
+      return;
+    }
+    // Einstiegs-Treppe: GENAU eine Stufe pro Kunden-Redezug.
+    if (stageRef.current === "opener1" || stageRef.current === "warten")
+      goStage("bridge");
+    else if (stageRef.current === "bridge") goStage("frei");
+    setConvoState("denkt");
+    askAiNow();
+  }, [askAiNow, goStage]);
+
   // ── Kunden-Handler: Redezug protokollieren + Turn-Ende erkennen ──
   const onCustomerText = useCallback(
-    (text: string, sourceLabel: string) => {
+    (text: string, sourceLabel: string, speechFinal = false) => {
       if (!text.trim()) return;
       setCustomerTranscript((prev) => (prev + " " + text).slice(-1400));
       custRef.current = (custRef.current + " " + text).slice(-1600);
@@ -592,23 +624,13 @@ export function SouffleurRoom({
         );
       }
 
-      // Turn-Ende: ~500 ms Stille = Redezug fertig → GENAU EINE KI-Anfrage mit
-      // dem vollen Dialog. (Eine Anfrage pro Redezug — kein Verstopfen, kein
-      // nachträgliches Austauschen des Satzes.)
+      // Turn-Ende: bei Deepgrams speech_final (Kunde wirklich fertig) quasi
+      // sofort, sonst kurze Coalescing-Pause. Das frühere 500-ms-Fenster war
+      // der Hauptgrund für die träge KI-Übergabe.
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-      aiDebounceRef.current = setTimeout(() => {
-        aiDebounceRef.current = null;
-        if (lastSpeakerRef.current !== "customer") return; // Berater hat übernommen
-        // Einstiegs-Treppe: GENAU eine Stufe pro Kunden-Redezug. Erste Reaktion
-        // auf den Opener → Bridge; Antwort auf die Bridge → freies Gespräch.
-        if (stageRef.current === "opener1" || stageRef.current === "warten")
-          goStage("bridge");
-        else if (stageRef.current === "bridge") goStage("frei");
-        setConvoState("denkt");
-        askAiNow();
-      }, 500);
+      aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 120 : 280);
     },
-    [askAiNow, pushTurn, goStage],
+    [pushTurn, fireTurnEnd],
   );
 
   // ── Gemeinsame Teardown-Funktion für Kunden-Audio-Pipeline ──────
@@ -732,7 +754,7 @@ export function SouffleurRoom({
                 | undefined;
               if (text && d.is_final) {
                 sysRetryRef.current = 0; // gesunde Session → Budget zurück
-                onCustomerText(text, "Kunde");
+                onCustomerText(text, "Kunde", !!d.speech_final);
               }
             } catch {
               /* ignore */
@@ -847,7 +869,7 @@ export function SouffleurRoom({
                 const text = d.channel?.alternatives?.[0]?.transcript as
                   | string
                   | undefined;
-                if (text && d.is_final) onCustomerText(text, "Kunde");
+                if (text && d.is_final) onCustomerText(text, "Kunde", !!d.speech_final);
               } catch {
                 /* ignore */
               }
@@ -1060,6 +1082,7 @@ export function SouffleurRoom({
           stage: stageRef.current,
           elapsedSec: elapsedRef.current,
           repName: repNameRef.current.trim() || null,
+          repCity: repCityRef.current || null,
           profile: profileRef.current,
         }),
       });

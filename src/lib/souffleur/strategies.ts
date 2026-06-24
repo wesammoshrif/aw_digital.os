@@ -349,7 +349,7 @@ export const NEIN_GRADIENTEN: NeinGradient[] = [
 
 export const GOLDEN_RULES = [
   "Nie länger als 30 Sekunden am Stück reden. Fragen stellen, Stille aushalten.",
-  "Immer den Namen verwenden. 'Herr Müller' wirkt 3x stärker als 'Sie'.",
+  "Namen SPARSAM einsetzen: einmal zur Begrüßung, danach nur an Schlüsselstellen (Einwand drehen, Abschluss). NICHT in jedem Satz — ständige Wiederholung wirkt aufdringlich und einstudiert.",
   "Erst Schmerz, dann Lösung. Nie mit dem Produkt anfangen.",
   "Branchen-Sprache: 'Aufträge' statt 'Leads', 'Sichtbarkeit' statt 'SEO', 'gefunden werden' statt 'Conversion'.",
   "Handwerker-Ehre respektieren. Nie suggerieren, sein Betrieb sei schlecht. 'Ihre Arbeit ist top, online sieht man das nur nicht.'",
