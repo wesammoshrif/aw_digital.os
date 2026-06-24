@@ -17,28 +17,28 @@ export const PHASES: {
     label: "Kalt",
     tagline: "Einstieg — Aufmerksamkeit halten",
     aiGuidance:
-      "Einstieg: in EINEM Satz Relevanz schaffen und um 30–60 Sekunden bitten. Noch kein Pitch, kein Preis.",
+      "Lage Kunde kalt: dein Satz schafft in EINEM Satz Relevanz und bittet um etwas Zeit. Noch kein Pitch, kein Preis.",
   },
   {
     key: "lau",
     label: "Lau",
     tagline: "Bedarf + Lösung zeigen",
     aiGuidance:
-      "Bedarf wecken (Frage zum Ist-Zustand), und sobald der Bedarf klar ist: in 1–2 Sätzen sagen, was wir KONKRET tun (Website, die bei Google oben steht + mehr Anfragen) und was er davon hat — dann Richtung Termin. Nicht nur Fragen reihen.",
+      "Lage Bedarf angerissen: dein Satz sagt in 1–2 Sätzen, was wir konkret für ihn tun (Website, die bei Google oben steht und mehr Anfragen bringt) und was er davon hat, und führt Richtung Termin. Nicht nur Fragen reihen.",
   },
   {
     key: "warm",
     label: "Warm",
     tagline: "Einwand — ist ein Kaufsignal",
     aiGuidance:
-      "Einwand behandeln: kurz bestätigen, dann mit ROI/konkretem Beispiel kontern und zur Terminfrage führen.",
+      "Lage warm: dein Satz erkennt den Einwand kurz an, vertieft den konkreten Nutzen und testet die Terminbereitschaft.",
   },
   {
     key: "heiss",
     label: "Heiß",
     tagline: "Abschluss — Termin sichern",
     aiGuidance:
-      "Abschluss: konkrete Terminalternative anbieten (Tag + Uhrzeit). Nicht weiter verkaufen, den Termin festmachen.",
+      "Lage heiß: dein Satz ist eine Alternativfrage mit zwei festen Zeiten ('wann', nicht 'ob'). Nicht weiter verkaufen, den Termin festmachen.",
   },
 ];
 
@@ -105,11 +105,11 @@ export function isStage(s: unknown): s is Stage {
 export function stageGuidance(s: Stage): string {
   switch (s) {
     case "opener1":
-      return "AKTUELLER SCHRITT: Permission-Opener. Gib NUR eine kurze, freundliche Erlaubnis-Frage (max 15 Wörter). KEIN Grund, KEIN Pitch, KEIN Preis, KEIN Audit-Detail. Beispiel: „Hab ich Sie gerade ganz ungünstig erwischt?“";
+      return "Lage Schritt 1, Erlaubnis: dein Satz ist eine kurze, freundliche Erlaubnis-Frage (max 15 Wörter) in Ich/Wir-Form. Kein Grund, kein Pitch, kein Preis, kein Audit-Detail.";
     case "warten":
-      return "AKTUELLER SCHRITT: Zuhören. Der Berater wartet auf die Kundenreaktion — gib KEINEN neuen Satz, antworte nur mit einem Bindestrich „—“.";
+      return "Lage Zuhören: der Berater wartet auf die Kundenreaktion. Deine GESAMTE Ausgabe ist genau ein einzelner Bindestrich: —";
     case "bridge":
-      return "AKTUELLER SCHRITT: Bridge / Opener 2. Der Kunde hat auf den Opener reagiert (siehe letzter Kundensatz). War es ein Brush-off (keine Zeit / kein Interesse / Mail schicken / haben schon eine Website / zu teuer / wer sind Sie?) → gib EINE Konter-Zeile: erst ANERKENNEN, dann kurz DREHEN, dann eine FRAGE. War es grünes Licht oder eine neutrale Rückfrage → sag JETZT kurz wer wir sind und was wir tun (wir bauen Handwerkern Websites, die bei Google oben stehen und mehr Anfragen bringen) + EIN konkretes Audit-Signal, und ende mit EINER offenen Bedarfsfrage.";
+      return "Lage Schritt 2, Bridge: war die Kundenreaktion ein Brush-off (keine Zeit, kein Interesse, Mail schicken, haben schon eine Website, zu teuer, wer sind Sie), formuliere EINEN Satz, der kurz anerkennt, kurz dreht und mit einer Frage endet. War es grünes Licht, formuliere bis zu zwei Sätze in Ich/Wir-Form: wer wir sind und was wir tun (wir bauen Handwerkern Websites, die bei Google oben stehen und mehr Anfragen bringen) plus ein konkretes Signal, endend mit einer offenen Bedarfsfrage.";
     default:
       return "";
   }

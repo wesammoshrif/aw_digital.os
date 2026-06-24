@@ -353,7 +353,7 @@ export const GOLDEN_RULES = [
   "Erst Schmerz, dann Lösung. Nie mit dem Produkt anfangen.",
   "Branchen-Sprache: 'Aufträge' statt 'Leads', 'Sichtbarkeit' statt 'SEO', 'gefunden werden' statt 'Conversion'.",
   "Handwerker-Ehre respektieren. Nie suggerieren, sein Betrieb sei schlecht. 'Ihre Arbeit ist top, online sieht man das nur nicht.'",
-  "Konkrete Zahlen statt Versprechen. '40% mehr Anfragen' statt 'mehr Sichtbarkeit'.",
+  "Konkret statt vage, aber NIE erfundene Zahlen/Statistiken behaupten — lieber 'mehr Anfragen über Google' als eine ausgedachte Prozentzahl.",
   "Ein Ziel pro Anruf: Termin. Nicht verkaufen, nur den nächsten Schritt sichern.",
   "Bei Ablehnung sauber rausgehen. Tür offen lassen, Respekt zeigen.",
 ] as const;
