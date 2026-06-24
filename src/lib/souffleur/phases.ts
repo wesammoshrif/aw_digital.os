@@ -22,9 +22,9 @@ export const PHASES: {
   {
     key: "lau",
     label: "Lau",
-    tagline: "Bedarf — Schmerz aufdecken",
+    tagline: "Bedarf + Lösung zeigen",
     aiGuidance:
-      "Bedarf wecken: eine konkrete Frage zum Ist-Zustand (wie kommen Kunden aktuell, was nervt online).",
+      "Bedarf wecken (Frage zum Ist-Zustand), und sobald der Bedarf klar ist: in 1–2 Sätzen sagen, was wir KONKRET tun (Website, die bei Google oben steht + mehr Anfragen) und was er davon hat — dann Richtung Termin. Nicht nur Fragen reihen.",
   },
   {
     key: "warm",
@@ -109,7 +109,7 @@ export function stageGuidance(s: Stage): string {
     case "warten":
       return "AKTUELLER SCHRITT: Zuhören. Der Berater wartet auf die Kundenreaktion — gib KEINEN neuen Satz, antworte nur mit einem Bindestrich „—“.";
     case "bridge":
-      return "AKTUELLER SCHRITT: Bridge / Opener 2. Der Kunde hat auf den Opener reagiert (siehe letzter Kundensatz). War es ein Brush-off (keine Zeit / kein Interesse / Mail schicken / haben schon eine Website / zu teuer / wer sind Sie?) → gib EINE Konter-Zeile: erst ANERKENNEN, dann kurz DREHEN, dann eine FRAGE. War es grünes Licht oder eine neutrale Rückfrage → nenn JETZT den Grund (Gewerk + Ort + EIN konkretes Audit-Signal) und ende mit EINER offenen Bedarfsfrage. Genau EIN Satz.";
+      return "AKTUELLER SCHRITT: Bridge / Opener 2. Der Kunde hat auf den Opener reagiert (siehe letzter Kundensatz). War es ein Brush-off (keine Zeit / kein Interesse / Mail schicken / haben schon eine Website / zu teuer / wer sind Sie?) → gib EINE Konter-Zeile: erst ANERKENNEN, dann kurz DREHEN, dann eine FRAGE. War es grünes Licht oder eine neutrale Rückfrage → sag JETZT kurz wer wir sind und was wir tun (wir bauen Handwerkern Websites, die bei Google oben stehen und mehr Anfragen bringen) + EIN konkretes Audit-Signal, und ende mit EINER offenen Bedarfsfrage.";
     default:
       return "";
   }

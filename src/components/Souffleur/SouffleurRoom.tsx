@@ -84,7 +84,7 @@ const PHASE_STYLE: Record<Phase, string> = {
 //    webm/opus-containerisiert, Deepgram liest den Header selbst (Setzen würde
 //    den Stream zerschießen).
 const DG_URL =
-  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=300&smart_format=true&punctuate=true";
+  "wss://api.deepgram.com/v1/listen?model=nova-3&language=de&interim_results=true&endpointing=250&smart_format=true&punctuate=true";
 
 export function SouffleurRoom({
   lead,
@@ -258,8 +258,8 @@ export function SouffleurRoom({
   // bis die KI (die den Kundensatz kennt) eine passendere liefert.
   const bridgeLine = useMemo(() => {
     const reason = lead.website
-      ? "Ich war kurz auf Ihrer Seite — da ist mir was aufgefallen, das Sie Aufträge kostet."
-      : "Ihr Betrieb ist online kaum zu finden — und genau das kostet Sie Aufträge.";
+      ? "Wir bauen Handwerkern Websites, die bei Google oben stehen und mehr Anfragen bringen — auf Ihrer Seite ist mir was aufgefallen, das Sie Aufträge kostet."
+      : "Wir bauen Handwerkern Websites, die bei Google oben stehen und mehr Anfragen bringen — Ihr Betrieb ist online kaum zu finden, genau das kostet Sie Aufträge.";
     return fillName(`${reason} Wie kommen bei Ihnen aktuell die meisten Neukunden rein?`);
   }, [lead.website, fillName]);
 
@@ -628,7 +628,7 @@ export function SouffleurRoom({
       // sofort, sonst kurze Coalescing-Pause. Das frühere 500-ms-Fenster war
       // der Hauptgrund für die träge KI-Übergabe.
       if (aiDebounceRef.current) clearTimeout(aiDebounceRef.current);
-      aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 120 : 280);
+      aiDebounceRef.current = setTimeout(fireTurnEnd, speechFinal ? 60 : 180);
     },
     [pushTurn, fireTurnEnd],
   );
