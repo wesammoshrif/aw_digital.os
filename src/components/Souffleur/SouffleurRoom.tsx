@@ -1682,38 +1682,65 @@ export function SouffleurRoom({
                     Branchen-Playbook: {tradeCard.label}
                   </span>
                 </div>
-                <div className="mb-3 rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
+                <button
+                  onClick={() => {
+                    setAiLine(
+                      fillTradeHook(tradeCard.killerQuestion, lead.contactName, lead.city),
+                    );
+                    setDetected(null);
+                    setWhy(null);
+                  }}
+                  className="mb-3 block w-full rounded-[10px] bg-white p-3 text-left shadow-sm ring-1 ring-black/[0.04] transition hover:ring-[var(--color-copper-300)]"
+                >
                   <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                    Killer-Frage
+                    Killer-Frage · antippen
                   </div>
                   <p className="text-[13px] leading-snug text-[var(--color-fg-dim)]">
                     {tradeCard.killerQuestion}
                   </p>
-                </div>
+                </button>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
                     <div className="mb-1.5 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                      Pain Points
+                      Pain Points · antippen
                     </div>
                     <ul className="space-y-1.5 text-[12px] leading-snug text-[var(--color-fg-dim)]">
                       {tradeCard.painPoints.map((p, i) => (
-                        <li key={i} className="flex gap-1.5">
-                          <span className="mt-0.5 text-[var(--color-copper-500)]">
-                            {i + 1}.
-                          </span>
-                          <span>{p}</span>
+                        <li key={i}>
+                          <button
+                            onClick={() => {
+                              setAiLine(fillTradeHook(p, lead.contactName, lead.city));
+                              setDetected(null);
+                              setWhy(null);
+                            }}
+                            className="flex w-full gap-1.5 text-left transition hover:text-[var(--color-copper-700)]"
+                          >
+                            <span className="mt-0.5 text-[var(--color-copper-500)]">
+                              {i + 1}.
+                            </span>
+                            <span>{p}</span>
+                          </button>
                         </li>
                       ))}
                     </ul>
                   </div>
-                  <div className="rounded-[10px] bg-white p-3 shadow-sm ring-1 ring-black/[0.04]">
+                  <button
+                    onClick={() => {
+                      setAiLine(
+                        fillTradeHook(tradeCard.roiArgument, lead.contactName, lead.city),
+                      );
+                      setDetected(null);
+                      setWhy(null);
+                    }}
+                    className="block rounded-[10px] bg-white p-3 text-left shadow-sm ring-1 ring-black/[0.04] transition hover:ring-[var(--color-copper-300)]"
+                  >
                     <div className="mb-1 text-[10.5px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
-                      ROI-Argument
+                      ROI-Argument · antippen
                     </div>
                     <p className="text-[12px] leading-snug text-[var(--color-fg-dim)]">
                       {tradeCard.roiArgument}
                     </p>
-                  </div>
+                  </button>
                 </div>
               </div>
             )}
