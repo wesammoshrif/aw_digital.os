@@ -70,6 +70,7 @@ export function CallMode({
     consent: boolean;
     company?: string;
     trade?: string;
+    callId?: string | null;
   } | null>(null);
   useEffect(() => {
     if (active && callStartRef.current === null) callStartRef.current = Date.now();
@@ -177,6 +178,9 @@ export function CallMode({
             transcript: transcriptToSave,
             summary: summaryObj,
             sentiment,
+            // Souffleur hat den Anruf beim Verbinden schon angelegt → dieselbe
+            // Row aktualisieren statt eine zweite anzulegen (Upsert serverseitig).
+            externalCallId: cd?.callId ?? null,
           }),
         }).catch(() => {});
 
@@ -233,6 +237,7 @@ export function CallMode({
         consent?: boolean;
         company?: string;
         trade?: string;
+        callId?: string | null;
       };
       if (d?.type !== "souffleur:dispo" || d.leadId !== lead.id) return;
       // Echtes Gespräch + Consent merken — auch für den Termin-Pfad, der erst
@@ -242,6 +247,7 @@ export function CallMode({
         consent: !!d.consent,
         company: d.company,
         trade: d.trade,
+        callId: d.callId ?? null,
       };
       if (d.dispo === "hangup") {
         setActive(false);

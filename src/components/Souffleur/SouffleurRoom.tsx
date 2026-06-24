@@ -214,6 +214,7 @@ export function SouffleurRoom({
   const historyRef = useRef<string[]>([]); // letzte Kundenaussagen (für die KI)
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSpecFireRef = useRef(0); // letztes spekulatives Vorberechnen (Drossel)
+  const callIdRef = useRef<string | null>(null); // externalCallId des laufenden Anrufs
   const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
@@ -936,6 +937,17 @@ export function SouffleurRoom({
           aiGenRef.current++;
           setCustomerTranscript("");
           setAiLine(null);
+          // Anruf beim PLATZIEREN erfassen (zählt jeden Anrufversuch, auch
+          // unbeantwortete — unabhängig von der Dispo und vom fragilen
+          // window.opener-Weg). Die Dispo aktualisiert dieselbe Row über die
+          // externalCallId (Upsert serverseitig).
+          const cid = crypto.randomUUID();
+          callIdRef.current = cid;
+          fetch("/api/calls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ leadId: lead.id, externalCallId: cid }),
+          }).catch(() => {});
         }
         callWasActiveRef.current = true;
         setCallEnded(false);
@@ -948,7 +960,7 @@ export function SouffleurRoom({
         stopSystem();
       }
     },
-    [stopSystem, goStage],
+    [stopSystem, goStage, lead.id],
   );
 
   // ── Stille-Erkennung: Gesprächsende auch beim tel:-Anruf erkennen ──
@@ -1182,6 +1194,7 @@ export function SouffleurRoom({
           consent,
           company: lead.company,
           trade: lead.trade,
+          callId: callIdRef.current,
         },
         window.location.origin,
       );

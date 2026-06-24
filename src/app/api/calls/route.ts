@@ -66,6 +66,32 @@ export async function POST(req: NextRequest) {
         ? (body.dispo as Dispo)
         : undefined;
 
+    const callId = body.externalCallId?.trim() || null;
+
+    // Upsert über externalCallId: der Anruf wird beim VERBINDEN angelegt (zählt
+    // sofort als Anruf, auch ohne Dispo) und bei der Dispo dieselbe Row
+    // aktualisiert — kein Doppelzählen. Ohne externalCallId (tel:-Weg) Insert.
+    if (callId) {
+      const [existing] = await db
+        .select({ id: calls.id })
+        .from(calls)
+        .where(and(eq(calls.ownerId, user.id), eq(calls.externalCallId, callId)))
+        .limit(1);
+      if (existing) {
+        const patch: Record<string, unknown> = { endedAt: new Date() };
+        if (dispo) patch.dispo = dispo;
+        if (body.durationSec != null) {
+          patch.durationSec = body.durationSec;
+          patch.startedAt = new Date(Date.now() - body.durationSec * 1000);
+        }
+        if (body.transcript != null) patch.transcript = body.transcript;
+        if (body.summary != null) patch.summary = body.summary;
+        if (body.sentiment != null) patch.sentiment = body.sentiment;
+        await db.update(calls).set(patch).where(eq(calls.id, existing.id));
+        return NextResponse.json({ ok: true, updated: true });
+      }
+    }
+
     await db.insert(calls).values({
       ownerId: user.id,
       leadId,
@@ -74,7 +100,7 @@ export async function POST(req: NextRequest) {
       transcript: body.transcript ?? null,
       summary: body.summary ?? null,
       sentiment: body.sentiment ?? null,
-      externalCallId: body.externalCallId ?? null,
+      externalCallId: callId,
       externalProvider: "easybell",
       // startedAt aus der real gemessenen Dauer ableiten (statt = endedAt),
       // sonst ist endedAt - startedAt ≈ 0 und widerspricht durationSec.
