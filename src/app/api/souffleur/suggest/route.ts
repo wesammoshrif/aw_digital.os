@@ -29,6 +29,7 @@ import {
   type Stage,
 } from "@/lib/souffleur/phases";
 import { profileToHints } from "@/lib/souffleur/profile";
+import { getMove } from "@/lib/souffleur/playbook";
 import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 
@@ -140,6 +141,16 @@ export async function POST(req: NextRequest) {
   // führt der stageBlock; erst bei „frei" (oder fehlend) greift die Wärme-Phase.
   const stage: Stage = isStage(body.stage) ? body.stage : "frei";
   const stageBlock = stage !== "frei" ? `\n${stageGuidance(stage)}\n` : "";
+  // Bewährte Playbook-Zeile zur erkannten Lage (Einwand/Abschluss/Gatekeeper)
+  // als Stil-Vorlage — die KI formuliert frei nach, erfindet nicht bei null.
+  const move = body.moveId ? getMove(body.moveId) : null;
+  const moveBlock =
+    move &&
+    (move.kind === "objection" ||
+      move.kind === "closing" ||
+      move.kind === "gatekeeper")
+      ? `\nBewährte Wortlaut-Vorlage für genau diese Lage (frei und natürlich nachformulieren, nicht 1:1 kopieren): „${move.line}"${move.alts?.[0] ? ` — oder sinngemäß: „${move.alts[0]}"` : ""}\n`
+      : "";
   const phaseHint: Phase = isPhase(body.phase) ? body.phase : "kalt";
   const phaseBlock =
     stage === "frei"
@@ -177,7 +188,7 @@ Audit-Aufhänger: ${body.hook ?? "—"}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 
---- INTERNE HINWEISE (NICHT vorlesen, nur zur Wahl deines Satzes) ---${tradeBlock}${neinBlock}${stageBlock}${phaseBlock}${repNote}${repCityBlock}${profileBlock}${seasonBlock}
+--- INTERNE HINWEISE (NICHT vorlesen, nur zur Wahl deines Satzes) ---${tradeBlock}${neinBlock}${moveBlock}${stageBlock}${phaseBlock}${repNote}${repCityBlock}${profileBlock}${seasonBlock}
 --- ENDE INTERNE HINWEISE ---
 
 Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, ohne Anführungszeichen, ohne Etikett, ohne Regie:`;

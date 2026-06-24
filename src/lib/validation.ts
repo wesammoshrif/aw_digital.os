@@ -128,6 +128,9 @@ export const souffleurSuggestSchema = z.object({
   phase: z.string().max(60).nullable().optional(),
   // Einstiegs-Stufe (opener1 | warten | bridge | frei) — steuert das Einstiegs-Gate.
   stage: z.string().max(20).nullable().optional(),
+  // Vom lokalen Matcher erkannter Playbook-Move (Einwand/Signal) — liefert der
+  // KI die bewährte Zeile als Stil-Vorlage.
+  moveId: z.string().max(60).nullable().optional(),
   // Phase 9: Gesprächs-Gedächtnis (letzte Kundenaussagen), Phasen-Hint, Berater-Name.
   history: z.array(z.string().max(600)).max(8).optional(),
   elapsedSec: z.number().int().min(0).max(36_000).optional(),

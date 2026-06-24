@@ -41,6 +41,31 @@ function dayKey(d: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(d);
 }
 
+/** Aktuelle + Rekord-Streak aus einer Menge von Anruftagen (YYYY-MM-DD).
+ *  current = Lauf aufeinanderfolgender Tage, der heute ODER gestern endet
+ *  (heute noch ohne Anruf bricht die Serie nicht sofort). */
+function streakFromDays(daySet: Set<string>): { current: number; record: number } {
+  const toNum = (s: string) => Math.floor(Date.parse(s + "T00:00:00Z") / 86_400_000);
+  const nums = [...daySet].map(toNum).sort((a, b) => a - b);
+  if (nums.length === 0) return { current: 0, record: 0 };
+  let record = 1;
+  let run = 1;
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] === nums[i - 1] + 1) run++;
+    else if (nums[i] !== nums[i - 1]) run = 1;
+    if (run > record) record = run;
+  }
+  const set = new Set(nums);
+  const today = toNum(dayKey(new Date()));
+  let d = set.has(today) ? today : set.has(today - 1) ? today - 1 : null;
+  let current = 0;
+  while (d !== null && set.has(d)) {
+    current++;
+    d--;
+  }
+  return { current, record: Math.max(record, current) };
+}
+
 /**
  * Führt eine Query RLS-gescopt als der eingeloggte Nutzer aus.
  * Kein Login (sollte hinter der Middleware nie passieren) → fallback.
@@ -213,7 +238,11 @@ export async function callStats() {
     "busy",
     "wrong_number",
   ]);
-  const connected = calls.filter((c) => !NOT_REACHED.has(c.dispo ?? "")).length;
+  // Verbunden = es gibt eine Dispo UND sie ist eine „erreicht"-Dispo. Anrufe
+  // ohne Dispo (Connect-Row beim Platzieren) zählen NICHT als verbunden.
+  const connected = calls.filter(
+    (c) => c.dispo && !NOT_REACHED.has(c.dispo),
+  ).length;
   const appointments = calls.filter((c) => c.dispo === "appointment").length;
   const interested = calls.filter((c) => c.dispo === "interested").length;
   const totalDuration = calls.reduce((s, c) => s + (c.durationSec ?? 0), 0);
@@ -257,19 +286,26 @@ export async function getStreak(): Promise<{
     return { current: STREAK.current, record: STREAK.record, ramp: DEFAULT_RAMP };
   return scoped({ current: 0, record: 0, ramp: DEFAULT_RAMP }, async (tx) => {
     try {
-      const { settings } = await import("@/db/schema");
+      const { settings, calls } = await import("@/db/schema");
+      const { desc } = await import("drizzle-orm");
       const [s] = await tx.select().from(settings).limit(1);
-      return {
-        current: s?.streakDays ?? 0,
-        record: s?.streakRecord ?? 0,
-        ramp: {
-          start: s?.rampStart ?? 25,
-          step: s?.rampStep ?? 10,
-          interval: s?.rampIntervalDays ?? 14,
-          max: s?.rampMax ?? 100,
-          startedAt: s?.rampStartedAt ?? null,
-        },
+      const ramp = {
+        start: s?.rampStart ?? 25,
+        step: s?.rampStep ?? 10,
+        interval: s?.rampIntervalDays ?? 14,
+        max: s?.rampMax ?? 100,
+        startedAt: s?.rampStartedAt ?? null,
       };
+      // Streak aus den ECHTEN Anruftagen (Europe/Berlin) berechnen — der
+      // settings-Zähler wurde nie geschrieben und stand deshalb immer auf 0.
+      const rows = await tx
+        .select({ at: calls.startedAt })
+        .from(calls)
+        .orderBy(desc(calls.startedAt));
+      const daySet = new Set<string>();
+      for (const r of rows) if (r.at) daySet.add(dayKey(new Date(r.at)));
+      const { current, record } = streakFromDays(daySet);
+      return { current, record: Math.max(record, s?.streakRecord ?? 0), ramp };
     } catch {
       return { current: 0, record: 0, ramp: DEFAULT_RAMP };
     }

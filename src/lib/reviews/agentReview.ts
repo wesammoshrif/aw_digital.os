@@ -112,16 +112,19 @@ export async function computeAgentMetrics(
   for (const l of leadRows) companyByLead.set(l.id, l.company ?? null);
 
   // ── Anrufe ──
+  // Verbunden = es liegt eine „erreicht"-Dispo vor (konsistent mit store.ts
+  // callStats). Anrufe ohne Dispo (Connect-Row beim Platzieren) und no_answer/
+  // voicemail/busy/wrong_number zählen NICHT als verbunden.
+  const NOT_REACHED = new Set(["no_answer", "voicemail", "busy", "wrong_number"]);
   const dispoBreakdown: Record<string, number> = {};
   let connected = 0;
   let durationSum = 0;
   for (const c of callRows) {
     const d = c.dispo ?? "unbekannt";
     dispoBreakdown[d] = (dispoBreakdown[d] ?? 0) + 1;
-    const dur = num(c.durationSec);
-    if (dur > 0) {
+    if (c.dispo && !NOT_REACHED.has(c.dispo)) {
       connected++;
-      durationSum += dur;
+      durationSum += num(c.durationSec);
     }
   }
   const totalCalls = callRows.length;

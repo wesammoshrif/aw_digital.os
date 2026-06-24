@@ -104,6 +104,7 @@ export function SouffleurRoom({
   const [micLevel, setMicLevel] = useState(0);
   const [sysLevel, setSysLevel] = useState(0);
   const [maybeEnded, setMaybeEnded] = useState(false);
+  const [pacingCue, setPacingCue] = useState(false); // Monolog-Warnung
   const [copied, setCopied] = useState(false);
   const [aiLine, setAiLine] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -215,6 +216,7 @@ export function SouffleurRoom({
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSpecFireRef = useRef(0); // letztes spekulatives Vorberechnen (Drossel)
   const callIdRef = useRef<string | null>(null); // externalCallId des laufenden Anrufs
+  const moveIdRef = useRef<string | null>(null); // letzter erkannter Playbook-Move
   const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
@@ -536,6 +538,7 @@ export function SouffleurRoom({
         neinTyp: nein,
         phase: phaseRef.current,
         stage: stageRef.current,
+        moveId: moveIdRef.current,
         elapsedSec: elapsedRef.current,
         repName: repNameRef.current.trim() || null,
         profile: profileRef.current,
@@ -614,6 +617,7 @@ export function SouffleurRoom({
       // Sofortiger lokaler Cue (Matcher), während der Kunde redet.
       const mv = matchMove(custRef.current);
       if (mv) {
+        moveIdRef.current = mv.id; // bewährte Playbook-Zeile an die KI durchreichen
         setMove(mv);
         setDetected(mv.label + " · " + sourceLabel);
         setPhase(
@@ -624,18 +628,22 @@ export function SouffleurRoom({
             customerSpoke: true,
           }),
         );
+      } else {
+        moveIdRef.current = null;
       }
 
       // Spekulatives Vorberechnen: WÄHREND der Kunde noch redet (kein
       // speech_final) die KI schon anstoßen, gedrosselt — so steht der Tipp fast
-      // fertig, sobald er aufhört. Nur im freien Gespräch, nicht im Opener-Gate,
-      // nicht während der Berater vorliest. Latest-wins (aiGenRef) ersetzt die
-      // spekulative Antwort durch die finale, sobald der Redezug wirklich endet.
+      // fertig, sobald er aufhört. Bei erkanntem Einwand/Kaufsignal/Abschluss
+      // kürzere Drossel (350ms), weil der Berater den Konter dann am dringendsten
+      // sofort braucht. Latest-wins ersetzt die spekulative durch die finale Zeile.
+      const urgent =
+        mv && (mv.kind === "objection" || mv.kind === "signal" || mv.kind === "closing");
       if (
         !speechFinal &&
         stageRef.current === "frei" &&
         Date.now() >= advisorActiveUntilRef.current &&
-        Date.now() - lastSpecFireRef.current > 700 &&
+        Date.now() - lastSpecFireRef.current > (urgent ? 350 : 700) &&
         custRef.current.trim().length > 12
       ) {
         lastSpecFireRef.current = Date.now();
@@ -971,6 +979,7 @@ export function SouffleurRoom({
   const callEndedRef = useRef(false);
   const stopSystemRef = useRef(stopSystem);
   const silentSecsRef = useRef(0);
+  const advisorTalkSecsRef = useRef(0); // wie lange der Berater am Stück spricht
   micLevelRef.current = micLevel;
   sysLevelRef.current = sysLevel;
   listeningRef.current = listening;
@@ -1002,6 +1011,11 @@ export function SouffleurRoom({
         silentSecsRef.current = 0;
         setMaybeEnded(false);
       }
+      // Pacing gegen Monolog: zählt, wie lange der Berater am Stück spricht
+      // (eigener Mikro-Pegel). Ab 30 s am Stück → sanfter „Frag was"-Cue.
+      if (micLevelRef.current > 0.06) advisorTalkSecsRef.current += 1;
+      else advisorTalkSecsRef.current = 0;
+      setPacingCue(!callEndedRef.current && advisorTalkSecsRef.current >= 30);
     }, 1000);
     return () => clearInterval(t);
   }, []);
@@ -1109,6 +1123,7 @@ export function SouffleurRoom({
           neinTyp: classifyNein(custRef.current.slice(-200)),
           phase: phaseRef.current,
           stage: stageRef.current,
+          moveId: moveIdRef.current,
           elapsedSec: elapsedRef.current,
           repName: repNameRef.current.trim() || null,
           repCity: repCityRef.current || null,
@@ -1536,9 +1551,14 @@ export function SouffleurRoom({
                 KI wertet aus…
               </span>
             )}
-            {convoState === "berater" && (
+            {convoState === "berater" && !pacingCue && (
               <span className="text-[11px] font-medium text-[var(--color-fg-mute)]">
                 Du sprichst
+              </span>
+            )}
+            {pacingCue && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#fff4e5] px-2 py-0.5 text-[11px] font-semibold text-[#b25000]">
+                Langsamer — stell eine Frage, lass ihn reden
               </span>
             )}
             <button
@@ -1947,6 +1967,34 @@ export function SouffleurRoom({
               </div>
               <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {QUICK_OBJECTIONS.map((id) => {
+                  const m = getMove(id);
+                  if (!m) return null;
+                  const active = move.id === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => pickObjection(id)}
+                      className={cn(
+                        "rounded-[10px] px-2.5 py-2 text-left text-[12px] font-medium transition",
+                        active
+                          ? "bg-[var(--color-copper-500)] text-white"
+                          : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[var(--color-surface-3)]",
+                      )}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Gatekeeper (Sekretariat / „worum geht's?") */}
+            <div>
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.02em] text-[var(--color-fg-mute)]">
+                Gatekeeper antippen → groß
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {["gk_durchstellen", "gk_rueckruf"].map((id) => {
                   const m = getMove(id);
                   if (!m) return null;
                   const active = move.id === id;
