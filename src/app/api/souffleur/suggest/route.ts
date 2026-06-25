@@ -132,6 +132,15 @@ export async function POST(req: NextRequest) {
   const tradeBlock = body.tradeContext
     ? `\nBranchen-Kontext:\n${body.tradeContext}\n`
     : "";
+  // Viele Altbestand-Leads haben keine bekannte Branche → dann generisch bleiben
+  // und früh natürlich nachfragen, was der Betrieb macht (statt ein Gewerk zu erfinden).
+  const tradeKnown =
+    !!body.trade &&
+    body.trade.trim() !== "" &&
+    body.trade.trim().toLowerCase() !== "unbekannt";
+  const unknownTradeBlock = tradeKnown
+    ? ""
+    : `\nBranche UNBEKANNT: Nimm KEINE Branche an und erfinde kein Gewerk. Formuliere generisch („Betriebe wie Ihren", „Ihr Betrieb") und frage früh ganz natürlich, was der Betrieb genau macht (z.B. „Damit ich's richtig einordne — was macht Ihr Betrieb denn genau?"), bevor du auf den konkreten Nutzen eingehst.\n`;
   const neinTyp =
     (body.neinTyp as NeinTyp | null) ?? classifyNein(body.transcript ?? "");
   const neinBlock = neinTyp
@@ -188,7 +197,7 @@ Audit-Aufhänger: ${body.hook ?? "—"}
 Gesprächsverlauf (Berater = du selbst, Kunde = Gegenüber):
 ${dialog}
 
---- INTERNE HINWEISE (NICHT vorlesen, nur zur Wahl deines Satzes) ---${tradeBlock}${neinBlock}${moveBlock}${stageBlock}${phaseBlock}${repNote}${repCityBlock}${profileBlock}${seasonBlock}
+--- INTERNE HINWEISE (NICHT vorlesen, nur zur Wahl deines Satzes) ---${tradeBlock}${unknownTradeBlock}${neinBlock}${moveBlock}${stageBlock}${phaseBlock}${repNote}${repCityBlock}${profileBlock}${seasonBlock}
 --- ENDE INTERNE HINWEISE ---
 
 Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, ohne Anführungszeichen, ohne Etikett, ohne Regie:`;

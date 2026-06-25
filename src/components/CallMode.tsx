@@ -74,6 +74,7 @@ export function CallMode({
     company?: string;
     trade?: string;
     callId?: string | null;
+    note?: string | null;
   } | null>(null);
   useEffect(() => {
     if (active && callStartRef.current === null) callStartRef.current = Date.now();
@@ -105,6 +106,9 @@ export function CallMode({
         dispo,
         { appointmentAt },
       );
+      // Pflicht-Notiz: bevorzugt die im Popup erfasste Notiz, sonst die lokal
+      // getippte. So wird das „was kam raus?" aus der Anruf-Abfrage gespeichert.
+      const effNote = (lastCallDataRef.current?.note ?? "").trim() || note.trim();
       try {
         // 1. Lead-Status aktualisieren
         const res = await fetch(`/api/leads/${lead.id}`, {
@@ -116,7 +120,7 @@ export function CallMode({
             nextStep: cad.nextStep,
             nextStepAt: cad.nextStepAt.toISOString(),
             locked: cad.locked ?? false,
-            note: note.trim() || undefined,
+            note: effNote || undefined,
           }),
         }).then((r) => r.json());
         if (!res.ok) throw new Error(res.error ?? "Unbekannter Fehler");
@@ -130,7 +134,7 @@ export function CallMode({
             title: `Anruf: ${label}`,
             payload: {
               dispo: dispo,
-              note: note.trim() || undefined,
+              note: effNote || undefined,
               attempts: cad.attempts,
               nextStep: cad.nextStep,
             },
@@ -147,7 +151,7 @@ export function CallMode({
         // Sentiment/nächster Schritt) — CRM-Gedächtnis ohne Tipparbeit + Daten
         // fürs Coaching. Ohne Consent bleibt es bei der getippten Notiz.
         const cd = lastCallDataRef.current;
-        let transcriptToSave: string | null = note.trim() || null;
+        let transcriptToSave: string | null = effNote || null;
         let summaryObj: Record<string, unknown> | null = null;
         let sentiment: string | null = null;
         if (cd?.consent && cd.transcript) {
@@ -236,6 +240,7 @@ export function CallMode({
         type?: string;
         leadId?: string;
         dispo?: string;
+        note?: string | null;
         transcript?: string | null;
         consent?: boolean;
         company?: string;
@@ -243,14 +248,15 @@ export function CallMode({
         callId?: string | null;
       };
       if (d?.type !== "souffleur:dispo" || d.leadId !== lead.id) return;
-      // Echtes Gespräch + Consent merken — auch für den Termin-Pfad, der erst
-      // nach dem Date-Picker speichert.
+      // Echtes Gespräch + Consent + Pflicht-Notiz merken — auch für den
+      // Termin-Pfad, der erst nach dem Date-Picker speichert.
       lastCallDataRef.current = {
         transcript: d.transcript ?? null,
         consent: !!d.consent,
         company: d.company,
         trade: d.trade,
         callId: d.callId ?? null,
+        note: d.note ?? null,
       };
       if (d.dispo === "hangup") {
         setActive(false);

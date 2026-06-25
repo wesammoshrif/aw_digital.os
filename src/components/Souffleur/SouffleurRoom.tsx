@@ -24,6 +24,7 @@ import {
   Flame,
   ChevronDown,
   Headphones,
+  ArrowRight,
 } from "lucide-react";
 import type { Lead } from "@/db/schema";
 import {
@@ -73,6 +74,20 @@ const DISPOS = [
   { key: "no_answer", label: "Nicht erreicht", tone: "neutral" },
   { key: "not_interested", label: "Kein Interesse", tone: "danger" },
   { key: "wrong_number", label: "Falsche Nr.", tone: "danger" },
+] as const;
+
+// Schnell antippbare Gründe für die Pflicht-Notiz nach dem Anruf.
+const REASON_CHIPS = [
+  "Kein Interesse",
+  "Kein Budget / zu teuer",
+  "Hat schon eine Website",
+  "Falsche Zeit / will Rückruf",
+  "Entscheider nicht da",
+  "Gatekeeper / nicht durchgekommen",
+  "Kein Bedarf",
+  "Macht Familie/Bekannter",
+  "Schon andere Anbieter",
+  "Mailbox / niemand dran",
 ] as const;
 
 // Aktiv-Stile pro Gesprächswärme: kühl-blau (kalt) → heiß-rot (heiß).
@@ -162,6 +177,10 @@ export function SouffleurRoom({
   const [showVoicemail, setShowVoicemail] = useState(false);
   // Mailbox-Countdown: läuft, solange das Voicemail-Overlay offen ist (15 → 0).
   const [vmSecs, setVmSecs] = useState(15);
+  // Pflicht-Abfrage nach dem Anruf: Ergebnis + Grund/Notiz (zwingend).
+  const [resultOpen, setResultOpen] = useState(false);
+  const [resultDispo, setResultDispo] = useState<string | null>(null);
+  const [resultNote, setResultNote] = useState("");
   const [briefingOpen, setBriefingOpen] = useState(true);
   // Einstiegs-Treppe (opener1 → warten → bridge → frei): feste Schiene für den
   // Gesprächsanfang, bevor die freie Phasen-Logik übernimmt. stageRef spiegelt
@@ -1323,7 +1342,7 @@ export function SouffleurRoom({
     });
   }
 
-  function disposition(key: string) {
+  function disposition(key: string, note?: string) {
     // 1. Laufenden Browser-Anruf aktiv beenden (SIP-BYE), SOLANGE der WebSocket
     //    noch lebt — sonst bleibt der Anruf beim Gegenüber/Handy stehen.
     try {
@@ -1345,6 +1364,7 @@ export function SouffleurRoom({
           type: "souffleur:dispo",
           leadId: lead.id,
           dispo: key,
+          note: note?.trim() || null,
           transcript,
           consent,
           company: lead.company,
@@ -1360,10 +1380,30 @@ export function SouffleurRoom({
     setTimeout(() => window.close(), 500);
   }
 
+  // Pflicht-Abfrage öffnen (Ergebnis vorwählen, Notiz leer). Die Leitung wird
+  // sofort getrennt (Berater hat das Gespräch ja beendet) — getaggt wird danach.
+  function openResult(key: string | null) {
+    try {
+      sipControlRef.current?.hangup();
+    } catch {}
+    setResultDispo(key);
+    setResultNote("");
+    setResultOpen(true);
+  }
+  // Speichern & weiter — nur mit Ergebnis UND nicht-leerer Notiz.
+  function finishResult() {
+    if (!resultDispo || !resultNote.trim()) return;
+    setResultOpen(false);
+    disposition(resultDispo, resultNote);
+  }
+
   // Shortcut-Aktionen: Leertaste=neuer KI-Satz, C=kopieren, 1=Termin,
   // 2=Rückruf, Esc=auflegen. (Ignoriert Eingabefelder.)
   onShortcutRef.current = (e: KeyboardEvent) => {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Bei offener Pflicht-Abfrage greifen die Gesprächs-Shortcuts nicht mehr
+    // (sonst würde Esc/1/2 die Vorauswahl + Notiz zurücksetzen).
+    if (resultOpen) return;
     const t = e.target as HTMLElement | null;
     if (
       t &&
@@ -1389,11 +1429,11 @@ export function SouffleurRoom({
     } else if (e.key.toLowerCase() === "c") {
       copyLine();
     } else if (e.key === "1") {
-      disposition("appointment");
+      openResult("appointment");
     } else if (e.key === "2") {
-      disposition("callback");
+      openResult("callback");
     } else if (e.key === "Escape") {
-      disposition("hangup");
+      openResult(null);
     }
   };
 
@@ -1570,13 +1610,121 @@ export function SouffleurRoom({
               <button
                 onClick={() => {
                   setShowVoicemail(false);
-                  disposition("voicemail");
+                  openResult("voicemail");
                 }}
                 className="rounded-full bg-[var(--color-copper-500)] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#0077ed]"
               >
                 Besprochen → speichern
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pflicht-Abfrage nach dem Anruf: Ergebnis + Pflicht-Notiz ────────
+          Ohne Ergebnis UND Notiz wird nichts gespeichert. Danach schließt
+          das Fenster und die Liste springt zum nächsten Lead. */}
+      {resultOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-6">
+          <div className="w-full max-w-[560px] rounded-[18px] bg-white p-6 shadow-[var(--shadow-2)]">
+            <div className="mb-1 flex items-center gap-2">
+              <PhoneOff className="h-4 w-4 text-[var(--color-copper-600)]" />
+              <span className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-copper-700)]">
+                Anruf vorbei — was ist passiert?
+              </span>
+            </div>
+            <p className="mb-3 text-[12px] text-[var(--color-fg-mute)]">
+              {lead.company}
+              {lead.trade ? ` · ${lead.trade}` : " · Branche unbekannt"}
+            </p>
+
+            {/* 1. Ergebnis wählen */}
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-fg-mute)]">
+              Ergebnis
+            </p>
+            <div className="mb-4 flex flex-wrap gap-1.5">
+              {DISPOS.filter((d) => d.key !== "voicemail").map((d) => {
+                const active = resultDispo === d.key;
+                return (
+                  <button
+                    key={d.key}
+                    onClick={() => setResultDispo(d.key)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors",
+                      active
+                        ? "bg-[var(--color-copper-500)] text-white"
+                        : "bg-[var(--color-surface-2)] text-[var(--color-fg-dim)] hover:bg-[var(--color-surface-3)]",
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 2. Schnell-Gründe (tippen → an Notiz anhängen) */}
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-fg-mute)]">
+              Grund (antippen)
+            </p>
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {REASON_CHIPS.map((r) => (
+                <button
+                  key={r}
+                  onClick={() =>
+                    setResultNote((prev) => {
+                      const has = prev
+                        .split(/\s*·\s*/)
+                        .map((s) => s.trim())
+                        .includes(r);
+                      if (has) return prev;
+                      return prev.trim() ? `${prev.trim()} · ${r}` : r;
+                    })
+                  }
+                  className="rounded-full border border-[var(--color-border)] bg-white px-2.5 py-1 text-[12px] text-[var(--color-fg-dim)] hover:border-[var(--color-copper-400)] hover:text-[var(--color-fg)]"
+                >
+                  + {r}
+                </button>
+              ))}
+            </div>
+
+            {/* 3. Pflicht-Notiz */}
+            <textarea
+              value={resultNote}
+              onChange={(e) => setResultNote(e.target.value)}
+              autoFocus
+              rows={3}
+              placeholder="Pflicht: Was kam raus? Warum gescheitert / nächster Schritt …"
+              className="w-full resize-y rounded-[12px] border border-[var(--color-border)] bg-white p-3 text-[14px] leading-relaxed text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
+            />
+
+            <div className="mt-4 flex items-center justify-between gap-2">
+              <button
+                onClick={() => setResultOpen(false)}
+                className="rounded-full px-3 py-2 text-[13px] font-medium text-[var(--color-fg-mute)] hover:text-[var(--color-fg)]"
+              >
+                Zurück
+              </button>
+              <button
+                onClick={finishResult}
+                disabled={!resultDispo || !resultNote.trim()}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-5 py-2 text-[13px] font-semibold text-white transition-colors",
+                  !resultDispo || !resultNote.trim()
+                    ? "cursor-not-allowed bg-[var(--color-surface-3)] text-[var(--color-fg-mute)]"
+                    : "bg-[var(--color-copper-500)] hover:bg-[#0077ed]",
+                )}
+              >
+                Speichern & nächster Lead
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
+            {(!resultDispo || !resultNote.trim()) && (
+              <p className="mt-2 text-right text-[11px] text-[var(--color-fg-mute)]">
+                {!resultDispo
+                  ? "Ergebnis wählen und kurz notieren, dann geht's weiter."
+                  : "Kurze Pflicht-Notiz fehlt noch."}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -2413,7 +2561,7 @@ export function SouffleurRoom({
                 onClick={() =>
                   d.key === "voicemail"
                     ? (setVmSecs(15), setShowVoicemail(true))
-                    : disposition(d.key)
+                    : openResult(d.key)
                 }
                 className={cn(
                   "rounded-full px-2.5 py-1.5 text-[12px] font-medium transition",
@@ -2431,11 +2579,11 @@ export function SouffleurRoom({
               </button>
             ))}
             <button
-              onClick={() => disposition("hangup")}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#ffeceb] text-[#d70015] hover:bg-[#ffe0de]"
-              title="Auflegen & schließen"
+              onClick={() => openResult(null)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#ffeceb] px-3 text-[12px] font-semibold text-[#d70015] hover:bg-[#ffe0de]"
+              title="Anruf beenden & bewerten"
             >
-              <PhoneOff className="h-4 w-4" />
+              <PhoneOff className="h-4 w-4" /> Beenden & bewerten
             </button>
           </div>
         </div>
