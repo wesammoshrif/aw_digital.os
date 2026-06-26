@@ -251,6 +251,115 @@ export async function callStats() {
   return { total, connected, connectRate, appointments, interested, avgDuration };
 }
 
+// Ein Anruf mit Kontext (Firma, Agent) für die Anruf-Liste / das Anruf-Protokoll.
+export type CallRow = {
+  id: string;
+  startedAt: Date;
+  durationSec: number | null;
+  dispo: string | null;
+  sentiment: string | null;
+  note: string | null;
+  leadId: string;
+  company: string | null;
+  phone: string | null;
+  trade: string | null;
+  city: string | null;
+  agentId: string;
+  agentName: string | null;
+  agentEmail: string | null;
+};
+
+// Kurz-Notiz/„was kam raus" aus den Anrufdaten ableiten: erst die KI-Summary
+// (nächster Schritt / Stichpunkte), sonst eine ohne-Consent getippte Pflicht-
+// Notiz (liegt im transcript als kurzer Einzeiler).
+function noteFromCall(
+  summary: Record<string, unknown> | null,
+  transcript: string | null,
+): string | null {
+  if (summary && typeof summary === "object") {
+    const ns = summary["nextStep"];
+    if (typeof ns === "string" && ns.trim()) return ns.trim();
+    const pts = summary["points"];
+    if (Array.isArray(pts) && pts.length)
+      return pts.filter((p) => typeof p === "string").slice(0, 2).join(" · ");
+  }
+  if (transcript && transcript.trim() && transcript.length < 240 && !transcript.includes("\n"))
+    return transcript.trim();
+  return null;
+}
+
+// Anruf-Protokoll: jeder Anruf mit Firma + Agent. RLS-gescopt — Admin sieht
+// alle Agents, ein Agent nur seine eigenen Anrufe.
+export async function listCallsWithContext(): Promise<CallRow[]> {
+  if (isMockMode) {
+    const leadMap = new Map(mockLeads.map((l) => [l.id, l]));
+    return [...mockCalls]
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .map((c) => {
+        const l = leadMap.get(c.leadId);
+        return {
+          id: c.id,
+          startedAt: c.startedAt,
+          durationSec: c.durationSec,
+          dispo: c.dispo,
+          sentiment: c.sentiment,
+          note: noteFromCall(c.summary ?? null, c.transcript),
+          leadId: c.leadId,
+          company: l?.company ?? null,
+          phone: l?.phone ?? null,
+          trade: l?.trade ?? null,
+          city: l?.city ?? null,
+          agentId: c.ownerId,
+          agentName: "Du",
+          agentEmail: null,
+        };
+      });
+  }
+  return scoped([] as CallRow[], async (tx) => {
+    const { calls, leads, profiles } = await import("@/db/schema");
+    const { desc, eq } = await import("drizzle-orm");
+    const rows = await tx
+      .select({
+        id: calls.id,
+        startedAt: calls.startedAt,
+        durationSec: calls.durationSec,
+        dispo: calls.dispo,
+        sentiment: calls.sentiment,
+        summary: calls.summary,
+        transcript: calls.transcript,
+        leadId: calls.leadId,
+        company: leads.company,
+        phone: leads.phone,
+        trade: leads.trade,
+        city: leads.city,
+        agentId: calls.ownerId,
+        agentName: profiles.name,
+        agentEmail: profiles.email,
+      })
+      .from(calls)
+      .innerJoin(leads, eq(leads.id, calls.leadId))
+      .leftJoin(profiles, eq(profiles.id, calls.ownerId))
+      .orderBy(desc(calls.startedAt))
+      .limit(1000);
+    return rows.map((r) => ({
+      id: r.id,
+      startedAt: r.startedAt,
+      durationSec: r.durationSec,
+      dispo: r.dispo,
+      sentiment: r.sentiment,
+      note: noteFromCall(r.summary ?? null, r.transcript),
+      leadId: r.leadId,
+      company: r.company,
+      phone: r.phone,
+      trade: r.trade,
+      city: r.city,
+      agentId: r.agentId,
+      agentName: r.agentName,
+      agentEmail: r.agentEmail,
+    }));
+  });
+}
+
 // Anruf-Rampe: Tagesziel startet bei `start` und steigt ab `anchor` alle
 // `interval` Tage um `step`, gedeckelt bei `max`. So „rechnet sich das
 // Tagesziel selbst" (wie im Settings-Text versprochen) — kein hardcoded Wert.

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Phone,
+  PhoneCall,
   Users,
   LayoutGrid,
   Radio,
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/", label: "Heute", icon: Phone },
   { href: "/leads/finder", label: "Leads finden", icon: Radar },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/anrufe", label: "Anrufe", icon: PhoneCall },
   { href: "/pipeline", label: "Pipeline", icon: LayoutGrid },
   { href: "/projects", label: "Projekte", icon: Briefcase },
   { href: "/termine", label: "Termine", icon: CalendarClock },
