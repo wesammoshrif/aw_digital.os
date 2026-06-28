@@ -95,6 +95,18 @@ export async function POST(req: NextRequest) {
     if (!row) {
       return NextResponse.json({ ok: false, error: "Insert ohne Ergebnis" }, { status: 500 });
     }
+
+    // Funnel mitführen: Angebot → proposal, direkt erstellte Rechnung → won.
+    // (Defensiv, darf den Insert nicht kippen.)
+    const kind = (body.kind ?? "quote") as "quote" | "invoice";
+    const num = body.invoiceNumber.toString().trim();
+    const { advanceLeadStatus } = await import("@/lib/funnel");
+    await advanceLeadStatus(
+      leadId,
+      kind === "invoice" ? "won" : "proposal",
+      `${kind === "invoice" ? "Rechnung" : "Angebot"} ${num} angelegt`,
+    );
+
     return NextResponse.json({ ok: true, id: row.id });
   } catch (err) {
     return serverError("invoices POST", err);

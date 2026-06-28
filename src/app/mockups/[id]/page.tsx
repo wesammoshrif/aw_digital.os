@@ -34,6 +34,8 @@ export default async function MockupForLeadPage({
       source: "manual" as const,
       value: null,
       maintenance: null,
+      maintenanceIntervalMonths: null,
+      lastMaintenanceInvoiceAt: null,
       painScore: null,
       auditHook: null,
       auditPayload: null,

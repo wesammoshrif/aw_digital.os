@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { listQuotes, listRechnungen, nowAnchor } from "@/lib/store";
 import { FileText, Receipt, Clock, CheckCircle2, AlertTriangle } from "lucide-react";
+import { InvoiceActions } from "@/components/InvoiceActions";
 import type { Invoice } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -146,6 +147,7 @@ function Section({
                 <Th className="text-right">Betrag</Th>
                 <Th>{validLabel}</Th>
                 <Th>Notiz</Th>
+                <Th className="text-right">Aktion</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-hairline)]">
@@ -170,6 +172,14 @@ function Section({
                   </td>
                   <td className="px-6 py-4 text-[12px] text-[var(--color-fg-mute)] max-w-[28ch] truncate">
                     {r.notes}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <InvoiceActions
+                      id={r.id}
+                      kind={r.kind}
+                      status={r.status}
+                      converted={!!r.convertedInvoiceId}
+                    />
                   </td>
                 </tr>
               ))}

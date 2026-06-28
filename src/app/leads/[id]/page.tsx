@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/Button";
 import { CallMode } from "@/components/CallMode";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import { MaintenanceOptIn } from "@/components/MaintenanceOptIn";
 import {
   getLead,
   listActivitiesForLead,
@@ -213,6 +214,14 @@ export default async function LeadDetailPage({
                 )}
               </div>
             </Card>
+          )}
+
+          {lead.status === "won" && (
+            <MaintenanceOptIn
+              leadId={lead.id}
+              maintenance={lead.maintenance}
+              intervalMonths={lead.maintenanceIntervalMonths}
+            />
           )}
 
           <Card>

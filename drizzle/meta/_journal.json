@@ -22,6 +22,13 @@
       "when": 1781633244999,
       "tag": "0002_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782651726892,
+      "tag": "0003_maintenance_mrr_optin",
+      "breakpoints": true
     }
   ]
 }

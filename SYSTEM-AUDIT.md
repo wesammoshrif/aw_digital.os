@@ -186,3 +186,38 @@ Hebel misst Wirkung auf die Kette Cold-Call → Termin → 2.000-€-Website / M
 *Hinweis zu Unsicherheiten:* `/signup` und `/forgot-password` wurden nicht im Detail gelesen — Status „zu verifizieren". Alle übrigen Status-Angaben sind am Quellcode gegengeprüft; wo ein Reader sich widersprach (Activities-Event-Spine), wurde am Code entschieden (Abschnitt 3.1).
 
 *Methodik:* read-only Audit, 5 parallele Domänen-Reader → 1 Synthese (Opus) → 6 adversarische Prüfer. Keine Code-Änderung. 28.06.2026.
+
+---
+
+## 9. Nachtrag — Zweitlauf (11 Agenten, read-only): zusätzliche Befunde
+
+Ein zweiter, unabhängiger Audit-Lauf (6 Subsystem-Maps + 4 Flow-Traces + Synthese) hat die obigen Befunde im Kern **bestätigt** (Settings-Fassade, Activity-Lücken bei Audit/Trigger, MRR-/Cron-Disconnect, SIP-Credentials im Klartext, tote Routen) und dazu folgende **net-neue, überwiegend umsatzrelevante** Befunde geliefert, die im Erstlauf fehlten. (Der Map-Agent „Telemetrie" lief in einen Platzhalter und wird separat nachgezogen.)
+
+| # | Schwere | Hebel | Net-neuer Befund | Beleg (file:line) | Fix |
+|---|---|---|---|---|---|
+| N1 | broken | HOCH | **`paidAt` wird von keiner Route je gesetzt** → `revenueThisMonth` zählt bezahlte Rechnungen strukturell nie (KPI bleibt 0, auch wenn „Bezahlt" angeklickt) | store.ts:634-642; invoices/route.ts:68-93 | PATCH /api/invoices/[id] stempelt bei status=paid `paidAt=now()` + „Als bezahlt"-Button |
+| N2 | disconnect | HOCH | **Cadence endet bei `audit_sent`, vergibt nie `proposal`/`won`** → won/proposalCount/MRR können über den Anruf-Flow nie befüllt werden | cadence.ts:49-129 (max :98) vs. store.ts:598-602 | Closing-Dispos „Angebot raus"→proposal, „Auftrag"→won; oder Status-Bump an Angebot/Convert koppeln |
+| N3 | broken | HOCH | **Angebot→Rechnung-Convert-Route existiert, aber kein UI-Button ruft sie auf** | invoices/[id]/convert/route.ts; Grep „convert" in src/**/*.tsx = 0 | „In Rechnung umwandeln"-Button in finances/page.tsx (status=accepted) |
+| N4 | broken | HOCH | **Dispo bricht still, wenn `window.opener===null`** (Popup-Blocker/Bookmark, rel=noopener) → Anruf bewertet, im CRM kommt nichts an | CallMode.tsx:366-377,409-417; SouffleurRoom.tsx:1372-1391 | fetch-Fallback statt nur postMessage; rel=noopener im Fallback raus — **Telefonie-nah, off-hours verifizieren** |
+| N5 | broken | mittel | **Convert lässt Rechnung als `draft`** → in keiner Umsatz-KPI, kein won-Status | invoices/[id]/convert/route.ts:56-69 | Convert mit Lead.status=won + Bezahlt-Flow (N1) koppeln |
+| N6 | broken | mittel | **projects/new liest `?leadId=` nie aus** → User muss UUID abtippen, sonst 400 | leads/[id]/page.tsx:210; projects/new (kein useSearchParams) | leadId via useSearchParams (Suspense) als Default |
+| N7 | broken | mittel | **Mockup-Default-Template lädt 404-Hero (`roof-aerial.jpg` fehlt)** für jeden Lead ohne erkanntes Gewerk | mockup/templates.ts:47,138; public/templates/ fehlt | Asset ablegen oder auf CSS-Gradient umstellen wie die anderen 4 |
+| N8 | disconnect | mittel | **tel:-Schnellanruf in der Tabelle zählt `attempts` absolut hoch (Lost-Update), ohne Dispo/Kadenz** | LeadsTable.tsx:53-60 vs. CallMode.tsx:119 | Tabellen-Button auf `attemptsIncrement` + Pflicht-Dispo |
+| N9 | disconnect | mittel | **Fire-and-forget: Termin/Anruf/Activity-Speicherung schlägt unbemerkt fehl** (nur Lead-PATCH geprüft) | CallMode.tsx:129-142,181-195,198-208 | Termin-Anlage awaiten, bei Fehler saveError setzen |
+| N10 | broken | mittel | **SIP: 2500-ms-Fixtimeout statt auf `registered`-Event zu warten** → Race, Anruf scheitert obwohl Bridge ok | SipDialer.tsx:88-97; client.ts:118-121 | Auf 'registered' warten — **Telefonie, off-hours + echter Anruf-Test** |
+| N11 | smell | mittel | **Stille-Erkennung (45 s Pegel<0.05) reißt Browser-Anruf ab, obwohl SIP lebt** | SouffleurRoom.tsx:1152-1167 vs. 1120-1127 | Pegel-Auto-Ende bei aktivem SIP aus, nur tel:-Weg — **Telefonie, off-hours** |
+
+**Zusammengeführte Welle 1 (beide Läufe, nach Hebel × Sicherheit):**
+
+*Sofort möglich (additiv, UI-/Logik-sicher, kein Telefonie-/RLS-/Schema-Eingriff, kein Off-hours-Zwang):*
+1. **N1 — `paidAt`-Writer + „Als bezahlt"-Button.** Ohne das ist jeder Umsatz unsichtbar. Aufwand S.
+2. **N3/N5 — Convert-Button verdrahten + Rechnung auf `issued`/won.** Aufwand S.
+3. **N2 — Cadence bis `proposal`/`won` schließen.** Größter Trichter-Hebel. Aufwand M (Cadence ist client-load-bearing → neue Zweige isoliert testen).
+4. **Erstlauf #2 — Settings-Integrationen ehrlich** (Brevo→Resend, 5 Fantasie-Services als „geplant"). Aufwand S.
+5. **Erstlauf #5 + N9-Erweiterung — Audit/Status-Change als Activity loggen.** Schließt Timeline-Lücke. Aufwand S, additiv.
+
+*Nur Off-hours + Verifikation (Telefonie-/Rückkanal-nah):*
+6. **N4 — Dispo-fetch-Fallback bei `window.opener===null`** (Popup-/Bookmark-Pfad durchspielen).
+7. **N8 — tel:-Schnellanruf auf `attemptsIncrement` + Pflicht-Dispo.**
+
+*Methodik Zweitlauf:* 6 Subsystem-Maps + 4 Flow-Traces (read-only, Opus) → 1 Synthese. Keine Code-Änderung.

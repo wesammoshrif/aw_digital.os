@@ -72,6 +72,16 @@ export async function PATCH(
       if (!isNaN(d.getTime())) patch.nextStepAt = d;
     }
     if (typeof body.locked === "boolean") patch.locked = body.locked;
+    // Wartungs-Opt-in (MRR-Automat). Leerer Betrag/0-Intervall = ausschalten.
+    if (body.maintenance !== undefined) {
+      const m = body.maintenance;
+      patch.maintenance =
+        m === null || String(m).trim() === "" ? null : String(m);
+    }
+    if (body.maintenanceIntervalMonths !== undefined) {
+      const iv = body.maintenanceIntervalMonths;
+      patch.maintenanceIntervalMonths = iv && iv > 0 ? iv : null;
+    }
     if (body.note?.trim()) {
       const stamp = new Date().toLocaleDateString("de-DE");
       const entry = `[${stamp}] ${body.note.trim()}`;

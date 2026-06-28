@@ -51,6 +51,10 @@ export const leadPatchSchema = z.object({
   nextStepAt: optStr,
   note: z.string().max(5000).optional(),
   locked: z.boolean().optional(),
+  // Wartungs-Opt-in (MRR-Automat). Betrag pro Monat + Intervall in Monaten.
+  // null/0 schaltet die Auto-Abrechnung wieder aus.
+  maintenance: z.union([z.string().max(40), z.number()]).nullable().optional(),
+  maintenanceIntervalMonths: z.number().int().min(0).max(60).nullable().optional(),
 });
 
 export const activitySchema = z.object({
@@ -66,6 +70,22 @@ export const invoiceCreateSchema = z.object({
   type: optStr,
   amount: z.union([z.string().max(40), z.number()]),
   status: optStr,
+  dueDate: optStr,
+  notes: z.string().max(5000).optional(),
+});
+
+export const invoicePatchSchema = z.object({
+  status: z
+    .enum([
+      "draft",
+      "sent",
+      "paid",
+      "overdue",
+      "cancelled",
+      "accepted",
+      "declined",
+    ])
+    .optional(),
   dueDate: optStr,
   notes: z.string().max(5000).optional(),
 });

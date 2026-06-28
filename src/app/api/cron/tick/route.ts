@@ -140,16 +140,100 @@ async function handle(req: NextRequest) {
       console.error("[cron/tick] Reminder-Block fehlgeschlagen:", reminderErr);
     }
 
-    // b) Wiederkehrende Wartungsrechnungen
-    // TODO: Sobald an den won-Leads ein Wartungs-Intervall-Feld existiert
-    // (z.B. leads.maintenanceIntervalMonths + leads.lastMaintenanceInvoiceAt),
-    // hier monatlich für jeden won-Lead mit aktiver Wartung eine neue invoice
-    // (kind="invoice", type="recurring_maintenance", amount=leads.maintenance)
-    // erzeugen, wenn die letzte Wartungsrechnung > 1 Intervall her ist.
-    // Bis das Feld existiert: bewusst NICHTS erzeugen, um keine falschen
-    // Rechnungen zu generieren.
+    // b) Wiederkehrende Wartungsrechnungen — OPT-IN pro Kunde.
+    //    Es wird NUR für gewonnene Leads abgerechnet, bei denen jemand bewusst
+    //    ein Intervall (maintenanceIntervalMonths) UND einen Betrag (maintenance)
+    //    gesetzt hat. Ohne Intervall passiert garantiert nichts → keine
+    //    versehentlichen Rechnungen.
+    let recurringInvoices = 0;
+    try {
+      const { db } = await import("@/db");
+      const { leads, invoices, activities } = await import("@/db/schema");
+      const { eq, and, or, isNull, isNotNull, sql } = await import("drizzle-orm");
 
-    return NextResponse.json({ ok: true, processed: { reminders } });
+      // „Fällig" = letzte Wartungsrechnung ist NULL oder älter als das Intervall.
+      const dueCond = or(
+        isNull(leads.lastMaintenanceInvoiceAt),
+        sql`${leads.lastMaintenanceInvoiceAt} <= now() - (${leads.maintenanceIntervalMonths} || ' months')::interval`,
+      );
+
+      const dueLeads = await db
+        .select({
+          id: leads.id,
+          ownerId: leads.ownerId,
+          maintenance: leads.maintenance,
+          interval: leads.maintenanceIntervalMonths,
+        })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.status, "won"),
+            isNotNull(leads.maintenanceIntervalMonths),
+            isNotNull(leads.maintenance),
+            dueCond,
+          ),
+        );
+
+      for (const l of dueLeads) {
+        const amount = Number(l.maintenance);
+        if (!l.interval || l.interval < 1 || !(amount > 0)) continue;
+        try {
+          // Atomar claimen: nur wer last_maintenance_invoice_at jetzt setzt
+          // (Fälligkeits-Bedingung erneut geprüft), erzeugt die Rechnung — so
+          // doppeln überlappende Ticks keine Rechnung.
+          const claimed = await db
+            .update(leads)
+            .set({ lastMaintenanceInvoiceAt: now })
+            .where(and(eq(leads.id, l.id), dueCond))
+            .returning({ id: leads.id });
+          if (claimed.length === 0) continue;
+
+          const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const invoiceNumber = `RE-W-${ym}-${l.id.slice(0, 8)}`;
+          const dueDate = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+          await db.insert(invoices).values({
+            ownerId: l.ownerId,
+            leadId: l.id,
+            invoiceNumber,
+            kind: "invoice",
+            type: "recurring_maintenance",
+            status: "sent",
+            amount: String(l.maintenance),
+            currency: "EUR",
+            dueDate,
+            notes: `Automatische Wartungsrechnung (${l.interval}-Monats-Intervall).`,
+          });
+
+          // In die Timeline (Activity-Spine), damit der Verlauf vollständig ist.
+          try {
+            await db.insert(activities).values({
+              ownerId: l.ownerId,
+              leadId: l.id,
+              type: "note" as never,
+              title: `Wartungsrechnung erzeugt · ${invoiceNumber}`,
+              payload: { amount: String(l.maintenance), invoiceNumber, auto: true },
+            });
+          } catch {
+            /* Timeline-Eintrag optional */
+          }
+
+          recurringInvoices++;
+        } catch (innerErr) {
+          console.error(
+            `[cron/tick] Wartungsrechnung fehlgeschlagen (${l.id}):`,
+            innerErr,
+          );
+        }
+      }
+    } catch (recErr) {
+      console.error("[cron/tick] Wartungsrechnungs-Block fehlgeschlagen:", recErr);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      processed: { reminders, recurringInvoices },
+    });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });
   }

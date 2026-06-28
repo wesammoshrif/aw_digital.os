@@ -132,6 +132,13 @@ export const leads = pgTable(
     source: sourceEnum("source").notNull().default("manual"),
     value: numeric("value", { precision: 10, scale: 2 }),
     maintenance: numeric("maintenance", { precision: 10, scale: 2 }),
+    // Opt-in MRR-Automat: ist ein Intervall (in Monaten) gesetzt, erzeugt der
+    // Cron für diesen gewonnenen Kunden automatisch wiederkehrende Wartungs-
+    // rechnungen (Betrag = maintenance). NULL = aus → keine Auto-Rechnung.
+    maintenanceIntervalMonths: integer("maintenance_interval_months"),
+    lastMaintenanceInvoiceAt: timestamp("last_maintenance_invoice_at", {
+      withTimezone: true,
+    }),
 
     // Audit & Hooks
     painScore: integer("pain_score"), // 0–100, je niedriger desto besser für uns

@@ -52,7 +52,8 @@ export async function POST(
       ? `RE-${quote.invoiceNumber.slice(3)}`
       : `${quote.invoiceNumber}-RE`;
 
-    // Neue Rechnung anlegen
+    // Neue Rechnung anlegen — direkt als „sent" (offene Forderung), damit sie
+    // sofort in „Offene Rechnungen" auftaucht statt als unsichtbarer Entwurf.
     const [created] = await db
       .insert(invoices)
       .values({
@@ -61,7 +62,7 @@ export async function POST(
         projectId: quote.projectId,
         invoiceNumber,
         kind: "invoice",
-        status: "draft",
+        status: "sent",
         type: quote.type,
         amount: quote.amount,
         currency: quote.currency,
@@ -84,6 +85,14 @@ export async function POST(
         updatedAt: new Date(),
       })
       .where(scope);
+
+    // Angenommenes Angebot = gewonnener Deal → Funnel auf „won" (+ Auto-Projekt).
+    const { advanceLeadStatus } = await import("@/lib/funnel");
+    await advanceLeadStatus(
+      quote.leadId,
+      "won",
+      `Angebot ${quote.invoiceNumber} angenommen → Rechnung ${invoiceNumber}`,
+    );
 
     return NextResponse.json({ ok: true, invoiceId: created.id });
   } catch (err) {
