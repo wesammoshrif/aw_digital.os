@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { audits, leads } from "@/db/schema";
+import { audits, leads, activities } from "@/db/schema";
 import { runAudit } from "@/lib/audit/website";
 import { getSessionUser } from "@/lib/auth/session";
 import { eq, and } from "drizzle-orm";
@@ -84,6 +84,26 @@ export async function POST(req: NextRequest) {
             ? eq(leads.id, body.leadId)
             : and(eq(leads.id, body.leadId), eq(leads.ownerId, user.id)),
         );
+
+      // In die Lead-Timeline schreiben, damit der Verlauf vollständig ist
+      // (Activity-Spine). Darf den Audit-Erfolg nie kippen → defensiv.
+      try {
+        await db.insert(activities).values({
+          ownerId: user.id,
+          leadId: body.leadId,
+          type: "audit" as never,
+          title: `Website-Audit · Pain ${result.painScore} · Mobile ${result.mobileScore ?? "–"}`,
+          payload: {
+            painScore: result.painScore,
+            mobileScore: result.mobileScore,
+            desktopScore: result.desktopScore,
+            websiteUrl: result.websiteUrl,
+            hook: result.hookText,
+          },
+        });
+      } catch (e) {
+        console.error("[audit] Activity-Log fehlgeschlagen:", e);
+      }
     }
 
     return NextResponse.json({ ok: true, audit: stored, result });

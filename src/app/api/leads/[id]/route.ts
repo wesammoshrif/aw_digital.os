@@ -43,6 +43,20 @@ export async function PATCH(
         ? eq(leads.id, id)
         : and(eq(leads.id, id), eq(leads.ownerId, user.id));
 
+    // Vorher-Status (+ Lead-Owner) merken, um einen echten Status-Wechsel als
+    // Activity zu protokollieren — owner = Lead-Besitzer, damit es in dessen
+    // RLS-Timeline auftaucht (auch wenn ein Admin den Status dreht).
+    let prevStatus: string | null = null;
+    let leadOwnerId: string | null = null;
+    if (body.status) {
+      const [cur] = await db
+        .select({ status: leads.status, ownerId: leads.ownerId })
+        .from(leads)
+        .where(scope);
+      prevStatus = cur?.status ?? null;
+      leadOwnerId = cur?.ownerId ?? null;
+    }
+
     const patch: Record<string, unknown> = { updatedAt: new Date() };
     if (body.status) patch.status = body.status;
     if (body.email !== undefined) patch.email = body.email;
@@ -67,6 +81,23 @@ export async function PATCH(
     }
 
     await db.update(leads).set(patch).where(scope);
+
+    // Status-Wechsel in die Lead-Timeline schreiben (nur bei echter Änderung).
+    // Defensiv — darf das Update nie kippen.
+    if (body.status && body.status !== prevStatus) {
+      try {
+        const { activities } = await import("@/db/schema");
+        await db.insert(activities).values({
+          ownerId: leadOwnerId ?? user.id,
+          leadId: id,
+          type: "status_change" as never,
+          title: `Status: ${prevStatus ?? "—"} → ${body.status}`,
+          payload: { from: prevStatus, to: body.status },
+        });
+      } catch (e) {
+        console.error("[leads/[id] PATCH] status_change-Activity:", e);
+      }
+    }
 
     // Abschluss-Automatik: Lead auf "won" → automatisch ein Projekt anlegen,
     // falls noch keines für diesen Lead existiert. Darf das Status-Update

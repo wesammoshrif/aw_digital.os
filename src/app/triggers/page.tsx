@@ -79,9 +79,10 @@ export default async function TriggersPage() {
         </Badge>
       }
     >
-      <p className="mb-6 max-w-[60ch] text-[13.5px] leading-relaxed text-[var(--color-fg-dim)]">
-        Neugründungen, Förderprogramme, HWK-Pressemitteilungen, SSL-Ablauf —
-        warmer Anlass schlägt Kalt-Akquise um Faktor 3-8.
+      <p className="mb-6 max-w-[64ch] text-[13.5px] leading-relaxed text-[var(--color-fg-dim)]">
+        Warmer Anlass schlägt Kalt-Akquise. Aktuell ist nur der
+        Handelsregister-Feed (Neugründungen) live angebunden — die übrigen
+        Quellen sind vorbereitet, aber noch nicht aktiv.
       </p>
 
       <div className="grid grid-cols-12 gap-6">
@@ -170,10 +171,10 @@ export default async function TriggersPage() {
               Aktive Feeds
             </div>
             <ul className="mt-3 space-y-2 text-[12.5px]">
-              <FeedItem ok name="Handelsregister · 6 Bundesländer" />
-              <FeedItem ok name="HWK-Pressemitteilungen" />
-              <FeedItem ok name="foerderdatenbank.de" />
-              <FeedItem ok name="crt.sh · SSL-Ablauf" />
+              <FeedItem ok name="Handelsregister · Neugründungen" />
+              <FeedItem name="HWK-Pressemitteilungen" />
+              <FeedItem name="foerderdatenbank.de" />
+              <FeedItem name="crt.sh · SSL-Ablauf" />
               <FeedItem name="Google News Alerts" />
               <FeedItem name="Innungs-Pressefeeds" />
             </ul>
@@ -182,6 +183,9 @@ export default async function TriggersPage() {
           <Card className="px-5 py-4">
             <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
               Conversion-Multiplikator
+            </div>
+            <div className="mt-1 text-[10.5px] text-[var(--color-fg-mute)]">
+              Erfahrungs-Schätzwerte, nicht aus eigenen Daten gemessen.
             </div>
             <ul className="mt-3 space-y-2 text-[12.5px]">
               {[

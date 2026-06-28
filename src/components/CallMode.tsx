@@ -154,7 +154,10 @@ export function CallMode({
         let transcriptToSave: string | null = effNote || null;
         let summaryObj: Record<string, unknown> | null = null;
         let sentiment: string | null = null;
-        if (cd?.consent && cd.transcript) {
+        // Der Souffleur liefert hier bereits NUR die Berater-Worte (kundenfrei).
+        // Das ist keine Kundenaufnahme → kein Consent-Gate nötig, wird IMMER
+        // gespeichert. Auto-Löschung nach 3 Monaten via pg_cron in der DB.
+        if (cd?.transcript) {
           transcriptToSave = cd.transcript;
           try {
             const s = await fetch(`/api/souffleur/summary`, {

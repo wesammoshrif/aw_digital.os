@@ -169,6 +169,9 @@ export function SouffleurRoom({
   const [dgStatus, setDgStatus] = useState<
     "idle" | "live" | "no-key" | "error" | "off"
   >("idle");
+  // Klartext-Grund vom Token-Endpoint (z.B. „Member-Key statt Owner-Key") —
+  // wird als Tooltip am „Key fehlt"-Status gezeigt, statt den Grund zu verschlucken.
+  const [transcriptionHint, setTranscriptionHint] = useState<string | null>(null);
   const [testActive, setTestActive] = useState<string | null>(null);
   const [testStep, setTestStep] = useState(0);
   const [testHint, setTestHint] = useState<string | null>(null);
@@ -470,6 +473,7 @@ export function SouffleurRoom({
         if (gen !== micGenRef.current) return;
         if (!tok.ok) {
           setMicStatus("no-key"); // echtes Schlüssel-/Rechte-Problem → kein Retry
+          if (tok.message) setTranscriptionHint(tok.message);
           return;
         }
         const ws = new WebSocket(DG_URL, ["token", tok.token]);
@@ -876,6 +880,7 @@ export function SouffleurRoom({
           if (sysStreamRef.current !== stream) return; // Stream nicht mehr aktiv
           if (!tok.ok) {
             setDgStatus("no-key"); // echtes Schlüssel-/Rechte-Problem → kein Retry
+            if (tok.message) setTranscriptionHint(tok.message);
             return;
           }
           const ws = new WebSocket(DG_URL, ["token", tok.token]);
@@ -1007,6 +1012,7 @@ export function SouffleurRoom({
           }).then((r) => r.json());
           if (!tok.ok) {
             setDgStatus("no-key");
+            if (tok.message) setTranscriptionHint(tok.message);
             return { ok: true, dg: "no-key" };
           }
 
@@ -1352,12 +1358,17 @@ export function SouffleurRoom({
     //    ABER nur wenn der Berater Einwilligung gesetzt hat (§201 StGB: ohne
     //    Consent wird nichts gespeichert). Das echte Transkript ist die Basis
     //    für CRM-Gedächtnis, Post-Call-Summary und Coaching.
-    const transcript = consent
-      ? turnsRef.current
-          .map((t) => `${t.speaker === "advisor" ? "Berater" : "Kunde"}: ${t.text}`)
-          .join("\n")
-          .slice(-8000) || null
-      : null;
+    // Datenschutz/Compliance: Es wird AUSSCHLIESSLICH gespeichert, was der
+    // Cold-Caller (Berater) selbst sagt — der Kundenton wird NICHT abgelegt.
+    // Dadurch entfällt die §201-Frage (wir zeichnen nur die eigene Mitarbeiter-
+    // stimme auf), und der Berater-Wortlaut wird zur Nachvollziehbarkeit
+    // (Beschwerde-/Qualitätsfall) IMMER erfasst — unabhängig vom Consent-Schalter.
+    const transcript =
+      turnsRef.current
+        .filter((t) => t.speaker === "advisor")
+        .map((t) => t.text)
+        .join("\n")
+        .slice(-8000) || null;
     try {
       window.opener?.postMessage(
         {
@@ -2381,6 +2392,11 @@ export function SouffleurRoom({
                     Du · Mikro
                   </span>
                   <span
+                    title={
+                      micStatus === "no-key"
+                        ? (transcriptionHint ?? undefined)
+                        : undefined
+                    }
                     className={cn(
                       "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
                       micStatus === "live"
@@ -2423,6 +2439,11 @@ export function SouffleurRoom({
                     Kunde · PC-Ton
                   </span>
                   <span
+                    title={
+                      dgStatus === "no-key"
+                        ? (transcriptionHint ?? undefined)
+                        : undefined
+                    }
                     className={cn(
                       "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
                       dgStatus === "live"
@@ -2443,8 +2464,8 @@ export function SouffleurRoom({
                   {customerTranscript ||
                     (dgStatus === "no-key" ? (
                       <span className="text-[var(--color-fg-faint)]">
-                        PC-Ton wird gehört (Pegel unten), aber für die
-                        Wort-Transkription fehlt der DEEPGRAM_API_KEY.
+                        {transcriptionHint ??
+                          "PC-Ton wird gehört (Pegel unten), aber für die Wort-Transkription fehlt der DEEPGRAM_API_KEY."}
                       </span>
                     ) : (
                       <span className="text-[var(--color-fg-faint)]">
