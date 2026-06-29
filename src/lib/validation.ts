@@ -55,6 +55,12 @@ export const leadPatchSchema = z.object({
   // null/0 schaltet die Auto-Abrechnung wieder aus.
   maintenance: z.union([z.string().max(40), z.number()]).nullable().optional(),
   maintenanceIntervalMonths: z.number().int().min(0).max(60).nullable().optional(),
+  // Compliance / DNC + Erstkontakt-Rechtsgrundlage.
+  dnc: z.boolean().optional(),
+  dncReason: z.string().max(300).nullable().optional(),
+  firstContactChannel: z.enum(["brief", "telefon"]).nullable().optional(),
+  consentDocumented: z.boolean().optional(),
+  consentSource: z.string().max(300).nullable().optional(),
 });
 
 export const activitySchema = z.object({

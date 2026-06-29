@@ -463,6 +463,20 @@ export async function listLeads(opts?: {
   });
 }
 
+// Do-Not-Call-Liste — alle dauerhaft gesperrten Leads (Compliance-Einsicht).
+export async function listDncLeads(): Promise<typeof mockLeads> {
+  if (isMockMode) return mockLeads.filter((l) => l.dnc);
+  return scoped([] as unknown as typeof mockLeads, async (tx) => {
+    const { leads } = await import("@/db/schema");
+    const { eq, desc } = await import("drizzle-orm");
+    return tx
+      .select()
+      .from(leads)
+      .where(eq(leads.dnc, true))
+      .orderBy(desc(leads.dncAt)) as never;
+  });
+}
+
 export async function getLead(id: string) {
   if (isMockMode) return mockLeads.find((l) => l.id === id) ?? null;
   if (!UUID_RE.test(id)) return null;
@@ -589,6 +603,7 @@ export async function dashboardSummary() {
     .filter(
       (l) =>
         !l.locked &&
+        !l.dnc &&
         (l.status === "new"
           ? !l.nextStepAt || l.nextStepAt.getTime() <= now.getTime() + 24 * 3600 * 1000
           : l.nextStepAt && l.nextStepAt.getTime() <= now.getTime() + 24 * 3600 * 1000),

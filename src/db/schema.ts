@@ -57,6 +57,8 @@ export const callDispoEnum = pgEnum("call_dispo", [
   "callback",
   "not_interested",
   "wrong_number",
+  // Harter Opt-out: Kunde will nie wieder angerufen werden (DNC).
+  "opt_out",
 ]);
 
 export const sourceEnum = pgEnum("lead_source", [
@@ -150,6 +152,18 @@ export const leads = pgTable(
     nextStepAt: timestamp("next_step_at", { withTimezone: true }),
     attempts: integer("attempts").notNull().default(0),
     locked: boolean("locked").notNull().default(false), // „nicht kontaktieren"
+
+    // Compliance / Do-Not-Call (DNC) — harter, dauerhafter Anruf-Ausschluss.
+    dnc: boolean("dnc").notNull().default(false),
+    dncReason: text("dnc_reason"),
+    dncAt: timestamp("dnc_at", { withTimezone: true }),
+    // Erlaubter Erstkontakt: 'brief' (rechtssicher bei Public-Scraping) oder
+    // 'telefon' (erst nach dokumentierter Einwilligung). NULL = unbestimmt.
+    firstContactChannel: text("first_contact_channel"),
+    // Einwilligung in Telefonwerbung dokumentiert (§7 UWG) + Zeitstempel/Quelle.
+    consentDocumented: boolean("consent_documented").notNull().default(false),
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    consentSource: text("consent_source"),
 
     notes: text("notes"),
     tags: text("tags").array(),

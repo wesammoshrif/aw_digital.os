@@ -29,6 +29,13 @@
       "when": 1782651726892,
       "tag": "0003_maintenance_mrr_optin",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782740109399,
+      "tag": "0004_compliance_dnc_consent",
+      "breakpoints": true
     }
   ]
 }

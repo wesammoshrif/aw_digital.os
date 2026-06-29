@@ -15,6 +15,8 @@ import {
   CheckCircle2,
   Pause,
   Mail,
+  Ban,
+  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +24,7 @@ import { EmailCompose } from "@/components/EmailCompose";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/db/schema";
 import { applyCadence, type Disposition } from "@/lib/cadence";
+import { isDnc, needsConsentFirst } from "@/lib/compliance";
 
 const DISPOSITIONS = [
   { key: "interested", label: "Interesse", icon: CheckCircle2, tone: "copper", description: "Wärmer Lead — Audit senden" },
@@ -30,8 +33,9 @@ const DISPOSITIONS = [
   { key: "voicemail", label: "Mailbox", icon: Voicemail, tone: "neutral", description: "+3 Tage" },
   { key: "busy", label: "Besetzt", icon: Pause, tone: "neutral", description: "Heute später erneut" },
   { key: "no_answer", label: "Nicht erreicht", icon: PhoneMissed, tone: "neutral", description: "+2 Tage" },
-  { key: "not_interested", label: "Kein Interesse", icon: XCircle, tone: "danger", description: "Verloren" },
-  { key: "wrong_number", label: "Falsche Nummer", icon: AlertTriangle, tone: "danger", description: "Eingefroren" },
+  { key: "not_interested", label: "Kein Interesse", icon: XCircle, tone: "danger", description: "Verloren — DNC" },
+  { key: "wrong_number", label: "Falsche Nummer", icon: AlertTriangle, tone: "danger", description: "Eingefroren — DNC" },
+  { key: "opt_out", label: "Nicht mehr anrufen", icon: Ban, tone: "danger", description: "Opt-out — dauerhaft gesperrt" },
 ] as const;
 
 const TONE_STYLES = {
@@ -48,11 +52,26 @@ const TONE_STYLES = {
 export function CallMode({
   lead,
   nextLeadId,
+  callBlocked,
 }: {
   lead: Lead;
   nextLeadId?: string | null;
+  callBlocked?: boolean;
 }) {
   const router = useRouter();
+  // Compliance: DNC = harte Sperre, consentBlocked = entschärfen + Rückfrage.
+  const dncBlocked = isDnc(lead);
+  const consentBlocked = !dncBlocked && needsConsentFirst(lead);
+  void callBlocked; // Gating wird granular aus dem Lead abgeleitet
+  // Anruf-Schutz: DNC blockt hart, fehlende Einwilligung fragt nach.
+  const complianceOk = useCallback(() => {
+    if (dncBlocked) return false;
+    if (consentBlocked)
+      return window.confirm(
+        "Für diesen öffentlich gescrapten Lead ist KEINE Einwilligung dokumentiert.\n\nRechtssicher wäre der Erstkontakt per Brief (BVerwG 6 C 3.23, 29.01.2025).\n\nTrotzdem jetzt anrufen?",
+      );
+    return true;
+  }, [dncBlocked, consentBlocked]);
   const [active, setActive] = useState(false);
   const [recording] = useState(false);
   const [note, setNote] = useState("");
@@ -120,6 +139,9 @@ export function CallMode({
             nextStep: cad.nextStep,
             nextStepAt: cad.nextStepAt.toISOString(),
             locked: cad.locked ?? false,
+            // Harter Do-Not-Call bei not_interested/wrong_number/opt_out.
+            dnc: cad.dnc ?? undefined,
+            dncReason: cad.dnc ? `Disposition: ${label}` : undefined,
             note: effNote || undefined,
           }),
         }).then((r) => r.json());
@@ -285,15 +307,47 @@ export function CallMode({
     <div className="space-y-5">
       {/* ── Phone block ───────────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-hairline)] bg-white p-6 shadow-[var(--shadow-1)]">
+        {(dncBlocked || consentBlocked) && (
+          <div
+            className={cn(
+              "mb-4 flex items-start gap-2 rounded-[12px] p-3 text-[12.5px] leading-relaxed",
+              dncBlocked
+                ? "bg-[#fef2f2] text-[#b42318]"
+                : "bg-[#fff8ee] text-[#7a4a00]",
+            )}
+          >
+            {dncBlocked ? (
+              <Ban className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              {dncBlocked
+                ? "Dieser Lead ist als „Nicht mehr anrufen“ (DNC) gesperrt — Anruf nicht möglich."
+                : "Öffentlich gescrapter Lead ohne dokumentierte Einwilligung. Rechtssicher: Erstkontakt per Brief (BVerwG 6 C 3.23). Anruf nur nach Rückfrage."}
+            </span>
+          </div>
+        )}
         <div className="relative flex items-center justify-between gap-6">
           <div className="min-w-0 flex-1">
             <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
               Klick zum Anrufen
             </div>
             <a
-              href={telHref}
-              onClick={() => setActive(true)}
-              className="text-mono mt-1 block truncate text-[42px] font-semibold leading-tight tracking-tight tabular text-[var(--color-fg)] transition hover:text-[var(--color-copper-600)]"
+              href={dncBlocked ? undefined : telHref}
+              onClick={(e) => {
+                if (!complianceOk()) {
+                  e.preventDefault();
+                  return;
+                }
+                setActive(true);
+              }}
+              className={cn(
+                "text-mono mt-1 block truncate text-[42px] font-semibold leading-tight tracking-tight tabular transition",
+                dncBlocked
+                  ? "cursor-not-allowed text-[var(--color-fg-mute)] line-through"
+                  : "text-[var(--color-fg)] hover:text-[var(--color-copper-600)]",
+              )}
             >
               {lead.phone ?? "Keine Nummer"}
             </a>
@@ -305,7 +359,7 @@ export function CallMode({
           </div>
 
           <div className="flex flex-col items-end gap-2.5">
-            <div className="flex items-center gap-2">
+            <div className={cn("flex items-center gap-2", dncBlocked && "hidden")}>
               <button
                 type="button"
                 onClick={() => {
@@ -317,6 +371,7 @@ export function CallMode({
                     popupRef.current = null;
                     return;
                   }
+                  if (!complianceOk()) return;
                   setActive(true);
                   setPopupBlocked(false);
                   const win = window.open(
@@ -361,6 +416,7 @@ export function CallMode({
                     popupRef.current = null;
                     return;
                   }
+                  if (!complianceOk()) return;
                   setActive(true);
                   setPopupBlocked(false);
                   const win = window.open(

@@ -48,7 +48,7 @@ export async function PATCH(
     // RLS-Timeline auftaucht (auch wenn ein Admin den Status dreht).
     let prevStatus: string | null = null;
     let leadOwnerId: string | null = null;
-    if (body.status) {
+    if (body.status || body.dnc) {
       const [cur] = await db
         .select({ status: leads.status, ownerId: leads.ownerId })
         .from(leads)
@@ -82,6 +82,31 @@ export async function PATCH(
       const iv = body.maintenanceIntervalMonths;
       patch.maintenanceIntervalMonths = iv && iv > 0 ? iv : null;
     }
+    // ── Compliance / DNC + Erstkontakt-Rechtsgrundlage ──────────────
+    if (typeof body.dnc === "boolean") {
+      patch.dnc = body.dnc;
+      if (body.dnc) {
+        // DNC an → dauerhaft sperren (raus aus jeder Queue) + Zeitstempel.
+        patch.locked = true;
+        patch.dncAt = new Date();
+        patch.dncReason = body.dncReason?.trim() || "Manuell als DNC markiert";
+      } else {
+        patch.dncAt = null;
+        patch.dncReason = null;
+      }
+    } else if (body.dncReason !== undefined) {
+      patch.dncReason = body.dncReason?.trim() || null;
+    }
+    if (body.firstContactChannel !== undefined) {
+      patch.firstContactChannel = body.firstContactChannel; // 'brief'|'telefon'|null
+    }
+    if (typeof body.consentDocumented === "boolean") {
+      patch.consentDocumented = body.consentDocumented;
+      patch.consentAt = body.consentDocumented ? new Date() : null;
+    }
+    if (body.consentSource !== undefined) {
+      patch.consentSource = body.consentSource?.trim() || null;
+    }
     if (body.note?.trim()) {
       const stamp = new Date().toLocaleDateString("de-DE");
       const entry = `[${stamp}] ${body.note.trim()}`;
@@ -91,6 +116,25 @@ export async function PATCH(
     }
 
     await db.update(leads).set(patch).where(scope);
+
+    // DNC-Setzung in die Timeline schreiben (defensiv).
+    if (body.dnc === true) {
+      try {
+        const { activities } = await import("@/db/schema");
+        await db.insert(activities).values({
+          ownerId: leadOwnerId ?? user.id,
+          leadId: id,
+          type: "status_change" as never,
+          title: "🚫 Nicht mehr anrufen (DNC) gesetzt",
+          payload: {
+            dnc: true,
+            reason: patch.dncReason ?? body.dncReason ?? null,
+          },
+        });
+      } catch (e) {
+        console.error("[leads/[id] PATCH] DNC-Activity:", e);
+      }
+    }
 
     // Status-Wechsel in die Lead-Timeline schreiben (nur bei echter Änderung).
     // Defensiv — darf das Update nie kippen.

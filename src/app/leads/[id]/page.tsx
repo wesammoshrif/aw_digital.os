@@ -5,6 +5,8 @@ import { ButtonLink } from "@/components/ui/Button";
 import { CallMode } from "@/components/CallMode";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { MaintenanceOptIn } from "@/components/MaintenanceOptIn";
+import { CompliancePanel } from "@/components/CompliancePanel";
+import { isDnc, needsConsentFirst } from "@/lib/compliance";
 import {
   getLead,
   listActivitiesForLead,
@@ -47,6 +49,8 @@ export default async function LeadDetailPage({
       : summary.queue[0]?.id ?? null;
   const nextLead = nextLeadId === id ? null : nextLeadId;
 
+  const callBlocked = isDnc(lead) || needsConsentFirst(lead);
+
   const scoreVariant =
     lead.score === "hot"
       ? ("hot" as const)
@@ -75,7 +79,7 @@ export default async function LeadDetailPage({
       <div className="grid grid-cols-12 gap-6">
         {/* ── Left: Call Mode ────────────────────────────────────── */}
         <div className="col-span-8 space-y-6">
-          <CallMode lead={lead} nextLeadId={nextLead} />
+          <CallMode lead={lead} nextLeadId={nextLead} callBlocked={callBlocked} />
 
           <Card>
             <CardHeader title="Aktivität" eyebrow="Timeline" />
@@ -126,6 +130,18 @@ export default async function LeadDetailPage({
               />
             </dl>
           </Card>
+
+          <CompliancePanel
+            leadId={lead.id}
+            source={lead.source}
+            dnc={lead.dnc}
+            dncReason={lead.dncReason}
+            dncAt={lead.dncAt}
+            firstContactChannel={lead.firstContactChannel}
+            consentDocumented={lead.consentDocumented}
+            consentSource={lead.consentSource}
+            consentAt={lead.consentAt}
+          />
 
           {lead.painScore !== null && (
             <Card className="px-5 py-4">

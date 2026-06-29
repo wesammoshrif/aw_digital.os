@@ -74,6 +74,7 @@ const DISPOS = [
   { key: "no_answer", label: "Nicht erreicht", tone: "neutral" },
   { key: "not_interested", label: "Kein Interesse", tone: "danger" },
   { key: "wrong_number", label: "Falsche Nr.", tone: "danger" },
+  { key: "opt_out", label: "Nicht mehr anrufen", tone: "danger" },
 ] as const;
 
 // Schnell antippbare Gründe für die Pflicht-Notiz nach dem Anruf.

@@ -15,7 +15,8 @@ export type Disposition =
   | "appointment"
   | "callback"
   | "not_interested"
-  | "wrong_number";
+  | "wrong_number"
+  | "opt_out";
 
 export interface CadenceResult {
   status: Lead["status"];
@@ -23,6 +24,8 @@ export interface CadenceResult {
   nextStepAt: Date;
   attempts: number;
   locked?: boolean;
+  // Harter Do-Not-Call — Lead dauerhaft aus allen Queues ausschließen.
+  dnc?: boolean;
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -110,20 +113,34 @@ export function applyCadence(
         attempts,
       };
     case "not_interested":
+      // Kein Interesse = verloren UND nicht mehr anrufen (DNC).
       return {
         status: "lost",
-        nextStep: "—",
+        nextStep: "Kein Interesse — nicht mehr anrufen",
         nextStepAt: new Date(now + 180 * DAY),
         attempts,
         locked: true,
+        dnc: true,
       };
     case "wrong_number":
+      // Falsche Nummer = nicht mehr über diese Nummer anrufen (DNC).
       return {
         status: "frozen",
-        nextStep: "Nummer korrigieren / Lead prüfen",
+        nextStep: "Falsche Nummer — nicht mehr anrufen",
         nextStepAt: new Date(now + 90 * DAY),
         attempts,
         locked: true,
+        dnc: true,
+      };
+    case "opt_out":
+      // Ausdrücklicher Opt-out: Kunde will nie wieder angerufen werden.
+      return {
+        status: "lost",
+        nextStep: "Opt-out — dauerhaft gesperrt",
+        nextStepAt: new Date(now + 3650 * DAY),
+        attempts,
+        locked: true,
+        dnc: true,
       };
   }
 }
