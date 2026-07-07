@@ -34,9 +34,16 @@ import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 import type Anthropic from "@anthropic-ai/sdk";
 
-// Live-Souffleur läuft auf Opus 4.8 im Fast Mode (bis 2,5× Ausgabe-Tempo),
-// damit das klügste Modell trotz stärkerer Basis schnell diktiert.
+// Live-Souffleur läuft auf Opus 4.8 (klügstes Modell). Fast Mode (bis 2,5×
+// Ausgabe-Tempo) ist Research-Preview und evtl. nicht auf jedem Konto frei —
+// deshalb per Env opt-in: SOUFFLEUR_FAST=true schaltet es zu, ohne Fast-Mode
+// läuft Standard-Opus-4.8 garantiert. Warm-up muss dieselbe Wahl spiegeln,
+// sonst Cache-Miss (Speed-Wechsel invalidiert den Prompt-Cache).
 const LIVE_MODEL = "claude-opus-4-8";
+const FAST_MODE = process.env.SOUFFLEUR_FAST === "true";
+const FAST_OPTS = FAST_MODE
+  ? { speed: "fast" as const, betas: ["fast-mode-2026-02-01"] }
+  : {};
 
 // Modul-weiter SDK-Client: der undici-Connection-Pool bleibt über Anrufe/Zeilen
 // hinweg warm → kein neuer TLS-Handshake pro Suggest (spart ~50–150 ms/Zeile).
@@ -156,8 +163,7 @@ export async function POST(req: NextRequest) {
       await client.beta.messages.create({
         model: LIVE_MODEL,
         max_tokens: 1,
-        speed: "fast",
-        betas: ["fast-mode-2026-02-01"],
+        ...FAST_OPTS,
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: "warm" }],
       });
@@ -249,9 +255,8 @@ Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, o
     const mstream = client.beta.messages.stream({
       model: LIVE_MODEL,
       max_tokens: 160,
-      // Fast Mode: bis 2,5× Ausgabe-Tempo (Research-Preview, First-Party-API).
-      speed: "fast",
-      betas: ["fast-mode-2026-02-01"],
+      // Fast Mode nur wenn per Env aktiviert (siehe FAST_OPTS oben).
+      ...FAST_OPTS,
       // System-Prompt cachen (greift ab ~langem Prompt) → günstigere Folge-Calls.
       system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: userPrompt }],
