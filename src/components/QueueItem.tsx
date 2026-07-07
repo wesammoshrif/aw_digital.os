@@ -3,21 +3,7 @@ import { Phone, ChevronRight } from "lucide-react";
 import { Badge } from "./ui/Badge";
 import type { Lead } from "@/db/schema";
 import { cn } from "@/lib/utils";
-
-const TRADE_LABEL: Record<string, string> = {
-  dachdecker: "Dachdecker",
-  maler: "Maler",
-  elektriker: "Elektriker",
-  shk: "SHK",
-  tischler: "Tischler",
-  fliesenleger: "Fliesenleger",
-  maurer: "Maurer",
-  galabau: "GaLaBau",
-  bauunternehmer: "Bauunternehmen",
-  solar: "Solar",
-  gastronomie: "Gastronomie",
-  hausmeister: "Hausmeister",
-};
+import { displayTrade, painInfo } from "@/lib/enrich";
 
 function scoreVariant(score: Lead["score"]): "hot" | "warm" | "cold" | "neutral" {
   if (score === "hot") return "hot";
@@ -27,9 +13,13 @@ function scoreVariant(score: Lead["score"]): "hot" | "warm" | "cold" | "neutral"
 }
 
 export function QueueItem({ lead, index }: { lead: Lead; index: number }) {
-  const tradeLabel = lead.trade
-    ? (TRADE_LABEL[lead.trade] ?? lead.trade)
-    : "—";
+  // Gewerk raten, wenn die Quelle keins geliefert hat (keine „—" mehr).
+  const tradeLabel = displayTrade(lead) ?? "Branche unklar";
+  // Meta-Zeile ohne leere „—"-Segmente zusammenbauen.
+  const metaParts = [tradeLabel];
+  if (lead.city) metaParts.push(lead.city);
+  metaParts.push(lead.phone ?? "Keine Nummer");
+  const pain = painInfo(lead);
 
   return (
     <Link
@@ -56,7 +46,7 @@ export function QueueItem({ lead, index }: { lead: Lead; index: number }) {
           )}
         </div>
         <div className="mt-0.5 truncate text-[12px] text-[var(--color-fg-mute)]">
-          {tradeLabel} · {lead.city ?? "—"} · {lead.phone ?? "Keine Nummer"}
+          {metaParts.join(" · ")}
         </div>
         {lead.auditHook && (
           <div className="mt-1.5 line-clamp-1 text-[12px] italic text-[var(--color-copper-700)]">
@@ -65,7 +55,7 @@ export function QueueItem({ lead, index }: { lead: Lead; index: number }) {
         )}
       </div>
 
-      <PainScoreCell score={lead.painScore} />
+      <HebelCell level={pain.level} />
 
       <div className="text-mono w-10 shrink-0 text-right text-[11px] tabular text-[var(--color-fg-mute)]">
         {lead.attempts}/5
@@ -82,42 +72,30 @@ export function QueueItem({ lead, index }: { lead: Lead; index: number }) {
   );
 }
 
-function PainScoreCell({ score }: { score: number | null }) {
-  if (score === null)
-    return (
-      <div className="text-mono w-16 shrink-0 text-right text-[11px] text-[var(--color-fg-mute)]">
-        —
-      </div>
-    );
-  const hot = score < 20;
-  const mid = score < 50;
+// Hebel-Score 1–5 als 5 Punkte (5 gefüllt = größter Hebel). Höher = heißer.
+function HebelCell({ level }: { level: number }) {
+  const color =
+    level >= 4
+      ? "bg-[var(--color-hot)]"
+      : level === 3
+        ? "bg-[var(--color-warm)]"
+        : "bg-[var(--color-fg-faint)]";
   return (
-    <div className="w-16 shrink-0">
+    <div className="w-16 shrink-0" title={`Hebel ${level}/5 — höher = heißer`}>
       <div className="flex items-center justify-end gap-1.5">
-        <span
-          className={cn(
-            "text-mono tabular text-[12.5px] font-semibold",
-            hot
-              ? "text-[var(--color-hot)]"
-              : mid
-                ? "text-[var(--color-warm)]"
-                : "text-[var(--color-fg-mute)]",
-          )}
-        >
-          {score}
+        <span className="text-mono tabular text-[12.5px] font-semibold text-[var(--color-fg-dim)]">
+          {level}/5
         </span>
-        <div className="flex h-1.5 w-8 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
-          <div
-            className={cn(
-              "h-full transition-all",
-              hot
-                ? "bg-[var(--color-hot)]"
-                : mid
-                  ? "bg-[var(--color-warm)]"
-                  : "bg-[var(--color-fg-faint)]",
-            )}
-            style={{ width: `${100 - score}%` }}
-          />
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <span
+              key={i}
+              className={cn(
+                "h-1.5 w-1 rounded-full",
+                i <= level ? color : "bg-[var(--color-surface-3)]",
+              )}
+            />
+          ))}
         </div>
       </div>
     </div>

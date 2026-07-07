@@ -7,6 +7,7 @@ import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { MaintenanceOptIn } from "@/components/MaintenanceOptIn";
 import { CompliancePanel } from "@/components/CompliancePanel";
 import { isDnc, needsConsentFirst } from "@/lib/compliance";
+import { displayTrade, painInfo } from "@/lib/enrich";
 import {
   getLead,
   listActivitiesForLead,
@@ -94,7 +95,11 @@ export default async function LeadDetailPage({
           <Card>
             <CardHeader title="Stammdaten" eyebrow="Lead" />
             <dl className="divide-y divide-[var(--color-hairline)] px-5 py-3 text-[13px]">
-              <Row icon={Building2} label="Gewerk" value={lead.trade ?? "—"} />
+              <Row
+                icon={Building2}
+                label="Gewerk"
+                value={displayTrade(lead) ?? "Branche unklar"}
+              />
               <Row
                 icon={MapPin}
                 label="Ort"
@@ -143,11 +148,54 @@ export default async function LeadDetailPage({
             consentAt={lead.consentAt}
           />
 
+          {(() => {
+            const pain = painInfo(lead);
+            const tone =
+              pain.level >= 4
+                ? "text-[var(--color-hot)]"
+                : pain.level === 3
+                  ? "text-[var(--color-warm)]"
+                  : "text-[var(--color-fg-mute)]";
+            return (
+              <Card className="px-5 py-4">
+                <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
+                  Hebel-Score
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className={`text-mono text-[32px] font-semibold leading-none tabular ${tone}`}>
+                    {pain.level}
+                  </span>
+                  <span className="text-[13px] text-[var(--color-fg-mute)]">/ 5</span>
+                  <div className="ml-auto flex gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <span
+                        key={i}
+                        className={
+                          "h-2 w-2 rounded-full " +
+                          (i <= pain.level
+                            ? pain.level >= 4
+                              ? "bg-[var(--color-hot)]"
+                              : pain.level === 3
+                                ? "bg-[var(--color-warm)]"
+                                : "bg-[var(--color-fg-faint)]"
+                            : "bg-[var(--color-surface-3)]")
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-2 text-[12px] leading-snug text-[var(--color-fg-dim)]">
+                  {pain.reason}. <b>Höher = größerer Verkaufs-Hebel.</b>
+                </p>
+              </Card>
+            );
+          })()}
+
           {lead.painScore !== null && (
             <Card className="px-5 py-4">
               <div className="flex items-center justify-between">
                 <div className="text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
-                  Pain-Score
+                  Website-Audit (0–100)
                 </div>
                 <AlertCircle className="h-3.5 w-3.5 text-[var(--color-warm)]" />
               </div>

@@ -7,6 +7,7 @@ import { LeadsFilter } from "./LeadsFilter";
 import { StatusMenu } from "./StatusMenu";
 import { cn } from "@/lib/utils";
 import { isDnc, needsConsentFirst } from "@/lib/compliance";
+import { displayTrade } from "@/lib/enrich";
 import type { Lead } from "@/db/schema";
 
 function patchLead(id: string, body: Record<string, unknown>) {
@@ -118,7 +119,7 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
                   )}
                 </td>
                 <td className="px-4 py-3 capitalize text-[var(--color-fg-dim)]">
-                  {l.trade ?? "—"}
+                  {displayTrade(l) ?? "—"}
                 </td>
                 <td className="px-4 py-3 text-[var(--color-fg-dim)]">
                   {l.city ?? "—"}

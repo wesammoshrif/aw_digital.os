@@ -4,6 +4,7 @@ import { getSessionUser } from "@/lib/auth/session";
 import type { FinderLead } from "@/lib/finder/types";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { finderImportSchema } from "@/lib/validation";
+import { parseTrade } from "@/lib/enrich";
 
 /**
  * POST /api/finder/import
@@ -95,7 +96,9 @@ export async function POST(req: NextRequest) {
         await db.insert(leadsTable).values({
           ownerId,
           company: l.company,
-          trade: l.trade,
+          // Gewerk aus der Quelle, sonst aus Firmenname/Website raten (keine
+          // „unbekannt"-Leads, wo der Name das Gewerk klar hergibt).
+          trade: l.trade || parseTrade(l.company, l.website),
           city: l.city,
           postalCode: l.postalCode,
           address: l.street,

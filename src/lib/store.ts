@@ -24,6 +24,7 @@ export { isMockMode } from "./mode";
 import { isMockMode } from "./mode";
 import { getSessionUser, type SessionUser } from "@/lib/auth/session";
 import { withRls, type RlsTx } from "@/lib/db/rls";
+import { painLevel } from "@/lib/enrich";
 
 // Gültige UUID? Schützt DB-Queries vor Postgres-Cast-500 bei Nicht-UUID-IDs.
 const UUID_RE =
@@ -608,7 +609,12 @@ export async function dashboardSummary() {
           ? !l.nextStepAt || l.nextStepAt.getTime() <= now.getTime() + 24 * 3600 * 1000
           : l.nextStepAt && l.nextStepAt.getTime() <= now.getTime() + 24 * 3600 * 1000),
     )
-    .sort((a, b) => (a.painScore ?? 100) - (b.painScore ?? 100));
+    // Hebel-Score zuerst (5 = heißester Lead oben), dann fälligstes zuerst.
+    .sort(
+      (a, b) =>
+        painLevel(b) - painLevel(a) ||
+        (a.nextStepAt?.getTime() ?? 0) - (b.nextStepAt?.getTime() ?? 0),
+    );
 
   const won = all.filter((l) => l.status === "won").length;
   const proposalCount = all.filter((l) => l.status === "proposal").length;

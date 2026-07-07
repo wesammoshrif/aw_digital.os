@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth/session";
 import { requireAuth, serverError, parseJson } from "@/lib/api";
 import { leadCreateSchema } from "@/lib/validation";
+import { parseTrade } from "@/lib/enrich";
 
 export async function POST(req: NextRequest) {
   const denied = await requireAuth(req);
@@ -45,7 +46,10 @@ export async function POST(req: NextRequest) {
       .values({
         ownerId: user.id,
         company: body.company.trim(),
-        trade: body.trade?.trim() || null,
+        trade:
+          body.trade?.trim() ||
+          parseTrade(body.company, body.website) ||
+          null,
         city: body.city?.trim() || null,
         postalCode: body.postalCode?.trim() || null,
         phone: body.phone?.trim() || null,
