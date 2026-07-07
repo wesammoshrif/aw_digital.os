@@ -281,7 +281,7 @@ export async function generateAgentReview(opts: {
   model?: string;
 }): Promise<ReviewDraft> {
   const { name, metrics: m, apiKey } = opts;
-  const model = opts.model || process.env.AGENT_REVIEW_MODEL || "claude-haiku-4-5";
+  const model = opts.model || process.env.AGENT_REVIEW_MODEL || "claude-opus-4-8";
 
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey });

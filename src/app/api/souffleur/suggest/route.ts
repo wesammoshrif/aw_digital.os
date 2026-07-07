@@ -34,6 +34,10 @@ import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 import type Anthropic from "@anthropic-ai/sdk";
 
+// Live-Souffleur läuft auf Opus 4.8 im Fast Mode (bis 2,5× Ausgabe-Tempo),
+// damit das klügste Modell trotz stärkerer Basis schnell diktiert.
+const LIVE_MODEL = "claude-opus-4-8";
+
 // Modul-weiter SDK-Client: der undici-Connection-Pool bleibt über Anrufe/Zeilen
 // hinweg warm → kein neuer TLS-Handshake pro Suggest (spart ~50–150 ms/Zeile).
 let _client: Anthropic | null = null;
@@ -146,9 +150,14 @@ export async function POST(req: NextRequest) {
   if (body.warm) {
     try {
       const client = await getClient(key);
-      await client.messages.create({
-        model: "claude-haiku-4-5",
+      // Muss Modell UND speed der Live-Zeile spiegeln, sonst schreibt der
+      // Warm-up einen Cache, den der Fast-Mode-Call nicht lesen kann
+      // (Speed-Wechsel invalidiert den Prompt-Cache).
+      await client.beta.messages.create({
+        model: LIVE_MODEL,
         max_tokens: 1,
+        speed: "fast",
+        betas: ["fast-mode-2026-02-01"],
         system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: "warm" }],
       });
@@ -237,9 +246,12 @@ Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, o
   try {
     const client = await getClient(key);
 
-    const mstream = client.messages.stream({
-      model: "claude-haiku-4-5",
-      max_tokens: 120,
+    const mstream = client.beta.messages.stream({
+      model: LIVE_MODEL,
+      max_tokens: 160,
+      // Fast Mode: bis 2,5× Ausgabe-Tempo (Research-Preview, First-Party-API).
+      speed: "fast",
+      betas: ["fast-mode-2026-02-01"],
       // System-Prompt cachen (greift ab ~langem Prompt) → günstigere Folge-Calls.
       system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: userPrompt }],

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     Kurz, knackig, auf Augenhöhe. Antworte in JSON: { "tips": ["...", "...", "..."] }`;
 
     const msg = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-opus-4-8",
       max_tokens: 300,
       system: "Du antwortest ausschließlich in validem JSON.",
       messages: [{ role: "user", content: prompt }],
