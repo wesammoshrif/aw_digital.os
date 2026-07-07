@@ -32,6 +32,18 @@ import { profileToHints } from "@/lib/souffleur/profile";
 import { getMove } from "@/lib/souffleur/playbook";
 import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
+import type Anthropic from "@anthropic-ai/sdk";
+
+// Modul-weiter SDK-Client: der undici-Connection-Pool bleibt über Anrufe/Zeilen
+// hinweg warm → kein neuer TLS-Handshake pro Suggest (spart ~50–150 ms/Zeile).
+let _client: Anthropic | null = null;
+async function getClient(apiKey: string): Promise<Anthropic> {
+  if (!_client) {
+    const Mod = (await import("@anthropic-ai/sdk")).default;
+    _client = new Mod({ apiKey });
+  }
+  return _client;
+}
 
 const SYSTEM = `Du bist ein TELEPROMPTER für ein Kalt-Akquise-Telefonat in Deutschland.
 
@@ -128,6 +140,24 @@ export async function POST(req: NextRequest) {
   if (parsed.response) return parsed.response;
   const body = parsed.data;
 
+  // ── Warm-up (beim Verbinden gefeuert) ──────────────────────────
+  // Ein Mini-Call (1 Token) schreibt den ephemeren Prompt-Cache + öffnet die
+  // Verbindung, damit die erste echte Zeile ein günstiger Cache-Read ist.
+  if (body.warm) {
+    try {
+      const client = await getClient(key);
+      await client.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 1,
+        system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: "warm" }],
+      });
+    } catch {
+      /* Warm-up ist best-effort, Fehler egal */
+    }
+    return NextResponse.json({ ok: true, warmed: true });
+  }
+
   // ── Kontext zusammenbauen ──────────────────────────────────────
   const tradeBlock = body.tradeContext
     ? `\nBranchen-Kontext:\n${body.tradeContext}\n`
@@ -182,8 +212,10 @@ export async function POST(req: NextRequest) {
     ? `\nSaison-Gedanke (nur sinngemäß einbauen, wenn es den Termin natürlich stützt — NICHT wörtlich vorlesen): ${season.hook}\n`
     : "";
 
-  // Voller Dialog-Verlauf (Berater + Kunde im Wechsel).
-  const turns = Array.isArray(body.turns) ? body.turns.slice(-8) : [];
+  // Dialog-Verlauf (Berater + Kunde im Wechsel) — nur die letzten 5 Runden
+  // gehen ungecacht mit in jede Anfrage (kürzer = schnellerer erster Token,
+  // reicht für den Cold-Call-Kontext).
+  const turns = Array.isArray(body.turns) ? body.turns.slice(-5) : [];
   const dialog =
     turns.length > 0
       ? turns
@@ -203,8 +235,7 @@ ${dialog}
 Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, ohne Anführungszeichen, ohne Etikett, ohne Regie:`;
 
   try {
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new Anthropic({ apiKey: key });
+    const client = await getClient(key);
 
     const mstream = client.messages.stream({
       model: "claude-haiku-4-5",

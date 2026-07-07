@@ -1115,6 +1115,13 @@ export function SouffleurRoom({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ leadId: lead.id, externalCallId: cid }),
           }).catch(() => {});
+          // KI-Souffleur beim Klingeln vorwärmen (Prompt-Cache + Verbindung),
+          // damit die ERSTE diktierte Zeile so schnell kommt wie die folgenden.
+          fetch("/api/souffleur/suggest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ warm: true }),
+          }).catch(() => {});
         }
         callWasActiveRef.current = true;
         setCallEnded(false);

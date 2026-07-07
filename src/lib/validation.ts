@@ -145,6 +145,9 @@ export const finderImportSchema = z.object({
 });
 
 export const souffleurSuggestSchema = z.object({
+  // Warm-up beim Verbindungsaufbau: primt den Prompt-Cache + Connection-Pool,
+  // damit die ERSTE Zeile des Anrufs so schnell ist wie die folgenden.
+  warm: z.boolean().optional(),
   transcript: optLongStr,
   hook: z.string().max(2000).nullable().optional(),
   company: optStr,
