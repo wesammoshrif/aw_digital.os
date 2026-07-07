@@ -118,6 +118,9 @@ export const callCreateSchema = z.object({
   summary: record.nullable().optional(),
   sentiment: z.string().max(40).nullable().optional(),
   externalCallId: z.string().max(200).nullable().optional(),
+  // Pflicht-Notiz aus der Anruf-Abfrage — wird auf der Anruf-Row als
+  // summary.note gesichert (Server-Fallback gegen stillen Dispo-Verlust).
+  note: z.string().max(5000).nullable().optional(),
 });
 
 export const auditSchema = z.object({

@@ -1169,9 +1169,17 @@ export function SouffleurRoom({
         silentSecsRef.current += 1;
         if (silentSecsRef.current === 25) setMaybeEnded(true);
         if (silentSecsRef.current >= 45) {
-          setMaybeEnded(false);
-          setCallEnded(true);
-          stopSystemRef.current();
+          // NIE hart beenden, solange die SIP-Leitung noch steht — der Kunde
+          // schaut vielleicht nur in Ruhe die genannte Website an oder holt
+          // einen Kollegen. Sonst reißt es Souffleur + Transkript mitten im
+          // wichtigsten Gespräch ab. Bei aktivem SIP nur der Hinweis.
+          if (sipControlRef.current?.isActive()) {
+            setMaybeEnded(true);
+          } else {
+            setMaybeEnded(false);
+            setCallEnded(true);
+            stopSystemRef.current();
+          }
         }
       } else {
         silentSecsRef.current = 0;
@@ -1356,7 +1364,7 @@ export function SouffleurRoom({
     });
   }
 
-  function disposition(key: string, note?: string) {
+  async function disposition(key: string, note?: string) {
     // 1. Laufenden Browser-Anruf aktiv beenden (SIP-BYE), SOLANGE der WebSocket
     //    noch lebt — sonst bleibt der Anruf beim Gegenüber/Handy stehen.
     try {
@@ -1377,6 +1385,26 @@ export function SouffleurRoom({
         .map((t) => t.text)
         .join("\n")
         .slice(-8000) || null;
+    // 2a. SICHERUNGSNETZ: Dispo + Notiz + Transkript IMMER serverseitig
+    //     persistieren — unabhängig von window.opener. Sonst geht die Bewertung
+    //     still verloren, sobald der Opener null ist (Popup neu geladen / aus
+    //     dem Verlauf / rel=noopener-Ersatzlink). Idempotent per externalCallId.
+    try {
+      await fetch("/api/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: lead.id,
+          externalCallId: callIdRef.current,
+          dispo: key,
+          transcript,
+          note: note?.trim() || null,
+        }),
+      });
+    } catch {}
+    // 2b. Opener informieren (volle Kadenz: Status/Termin/Mail + Sprung zum
+    //     nächsten Lead). Fehlt der Opener, ist die Bewertung dank 2a trotzdem
+    //     sicher — nur der automatische Lead-Statuswechsel entfällt dann.
     try {
       window.opener?.postMessage(
         {

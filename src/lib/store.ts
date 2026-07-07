@@ -278,6 +278,9 @@ function noteFromCall(
   transcript: string | null,
 ): string | null {
   if (summary && typeof summary === "object") {
+    // Pflicht-Notiz aus der Anruf-Abfrage (Server-Fallback) hat Vorrang.
+    const manual = summary["note"];
+    if (typeof manual === "string" && manual.trim()) return manual.trim();
     const ns = summary["nextStep"];
     if (typeof ns === "string" && ns.trim()) return ns.trim();
     const pts = summary["points"];

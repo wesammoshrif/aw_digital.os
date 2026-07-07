@@ -20,6 +20,7 @@ const DISPO_VALUES = [
   "callback",
   "not_interested",
   "wrong_number",
+  "opt_out",
 ] as const;
 
 type Dispo = (typeof DISPO_VALUES)[number];
@@ -67,13 +68,27 @@ export async function POST(req: NextRequest) {
         : undefined;
 
     const callId = body.externalCallId?.trim() || null;
+    const noteVal = body.note?.trim() || null;
+
+    // summary + Notiz mergen, ohne sich gegenseitig zu überschreiben (der
+    // Dispo-Call setzt die Notiz, ein späterer KI-Summary-Call den Rest).
+    const mergeSummary = (
+      existing: Record<string, unknown> | null | undefined,
+    ): Record<string, unknown> | null => {
+      const merged = {
+        ...(existing ?? {}),
+        ...((body.summary as Record<string, unknown>) ?? {}),
+        ...(noteVal ? { note: noteVal } : {}),
+      };
+      return Object.keys(merged).length ? merged : null;
+    };
 
     // Upsert über externalCallId: der Anruf wird beim VERBINDEN angelegt (zählt
     // sofort als Anruf, auch ohne Dispo) und bei der Dispo dieselbe Row
     // aktualisiert — kein Doppelzählen. Ohne externalCallId (tel:-Weg) Insert.
     if (callId) {
       const [existing] = await db
-        .select({ id: calls.id })
+        .select({ id: calls.id, summary: calls.summary })
         .from(calls)
         .where(and(eq(calls.ownerId, user.id), eq(calls.externalCallId, callId)))
         .limit(1);
@@ -85,7 +100,7 @@ export async function POST(req: NextRequest) {
           patch.startedAt = new Date(Date.now() - body.durationSec * 1000);
         }
         if (body.transcript != null) patch.transcript = body.transcript;
-        if (body.summary != null) patch.summary = body.summary;
+        if (body.summary != null || noteVal) patch.summary = mergeSummary(existing.summary);
         if (body.sentiment != null) patch.sentiment = body.sentiment;
         await db.update(calls).set(patch).where(eq(calls.id, existing.id));
         return NextResponse.json({ ok: true, updated: true });
@@ -98,7 +113,7 @@ export async function POST(req: NextRequest) {
       ...(dispo ? { dispo } : {}),
       durationSec: body.durationSec ?? null,
       transcript: body.transcript ?? null,
-      summary: body.summary ?? null,
+      summary: mergeSummary(null),
       sentiment: body.sentiment ?? null,
       externalCallId: callId,
       externalProvider: "easybell",
