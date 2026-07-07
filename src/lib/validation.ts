@@ -34,8 +34,9 @@ export const emailSendSchema = z.object({
   subject: z.string().min(1).max(300),
   text: z.string().max(20_000).optional(),
   html: z.string().max(200_000).optional(),
-  // Einwilligung: der Kunde hat im Anruf um die Zusendung gebeten (UWG §7).
-  consentFromCall: z.boolean(),
+  // Optionaler Vermerk (kein Gate mehr): ob der Kunde im Anruf um die Zusendung
+  // bat. Wird nur protokolliert, blockt den Versand nie.
+  consentFromCall: z.boolean().optional(),
   callId: z.string().max(200).nullable().optional(),
   auditId: z.string().max(100).nullable().optional(),
 });

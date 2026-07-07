@@ -16,7 +16,6 @@ import {
   Pause,
   Mail,
   Ban,
-  ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -24,7 +23,7 @@ import { EmailCompose } from "@/components/EmailCompose";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/db/schema";
 import { applyCadence, type Disposition } from "@/lib/cadence";
-import { isDnc, needsConsentFirst } from "@/lib/compliance";
+import { isDnc } from "@/lib/compliance";
 
 const DISPOSITIONS = [
   { key: "interested", label: "Interesse", icon: CheckCircle2, tone: "copper", description: "Wärmer Lead — Audit senden" },
@@ -59,19 +58,12 @@ export function CallMode({
   callBlocked?: boolean;
 }) {
   const router = useRouter();
-  // Compliance: DNC = harte Sperre, consentBlocked = entschärfen + Rückfrage.
+  // Einziger harter Schutz: DNC (Kunde hat Anrufe ausdrücklich abbestellt) —
+  // schützt vor Beschwerden. Kein Einwilligungs-Nag; der Erstkontakt liegt in
+  // der Hand des Nutzers.
   const dncBlocked = isDnc(lead);
-  const consentBlocked = !dncBlocked && needsConsentFirst(lead);
   void callBlocked; // Gating wird granular aus dem Lead abgeleitet
-  // Anruf-Schutz: DNC blockt hart, fehlende Einwilligung fragt nach.
-  const complianceOk = useCallback(() => {
-    if (dncBlocked) return false;
-    if (consentBlocked)
-      return window.confirm(
-        "Für diesen öffentlich gescrapten Lead ist KEINE Einwilligung dokumentiert.\n\nRechtssicher wäre der Erstkontakt per Brief (BVerwG 6 C 3.23, 29.01.2025).\n\nTrotzdem jetzt anrufen?",
-      );
-    return true;
-  }, [dncBlocked, consentBlocked]);
+  const complianceOk = useCallback(() => !dncBlocked, [dncBlocked]);
   const [active, setActive] = useState(false);
   const [recording] = useState(false);
   const [note, setNote] = useState("");
@@ -307,24 +299,11 @@ export function CallMode({
     <div className="space-y-5">
       {/* ── Phone block ───────────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-hairline)] bg-white p-6 shadow-[var(--shadow-1)]">
-        {(dncBlocked || consentBlocked) && (
-          <div
-            className={cn(
-              "mb-4 flex items-start gap-2 rounded-[12px] p-3 text-[12.5px] leading-relaxed",
-              dncBlocked
-                ? "bg-[#fef2f2] text-[#b42318]"
-                : "bg-[#fff8ee] text-[#7a4a00]",
-            )}
-          >
-            {dncBlocked ? (
-              <Ban className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
+        {dncBlocked && (
+          <div className="mb-4 flex items-start gap-2 rounded-[12px] bg-[#fef2f2] p-3 text-[12.5px] leading-relaxed text-[#b42318]">
+            <Ban className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
-              {dncBlocked
-                ? "Dieser Lead ist als „Nicht mehr anrufen“ (DNC) gesperrt — Anruf nicht möglich."
-                : "Öffentlich gescrapter Lead ohne dokumentierte Einwilligung. Rechtssicher: Erstkontakt per Brief (BVerwG 6 C 3.23). Anruf nur nach Rückfrage."}
+              Dieser Lead ist als „Nicht mehr anrufen“ (DNC) gesperrt — Anruf nicht möglich.
             </span>
           </div>
         )}

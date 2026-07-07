@@ -4,15 +4,15 @@ import { useMemo, useState } from "react";
 import { Mail, X, Loader2, Check, AlertCircle } from "lucide-react";
 import {
   buildEmail,
-  EMAIL_KIND_IS_AD,
   EMAIL_KIND_LABEL,
   type EmailKind,
 } from "@/lib/email/templates";
 
 /**
- * Mail-Compose-Panel: vorbefüllter, editierbarer Wortlaut + Pflicht-Einwilligung
- * (UWG §7). Sendet über /api/emails/send. Empfänger = Lead-E-Mail (wird, falls
- * leer, hier erfasst und am Lead gespeichert).
+ * Mail-Compose-Panel: vorbefüllter, editierbarer Wortlaut, ein Klick = raus.
+ * Sendet über /api/emails/send. Empfänger = Lead-E-Mail (wird, falls leer, hier
+ * erfasst und am Lead gespeichert). Kein Einwilligungs-Gate — jeder Versand
+ * wird protokolliert.
  */
 export function EmailCompose({
   lead,
@@ -53,12 +53,9 @@ export function EmailCompose({
   const [text, setText] = useState(tpl.text);
   const [touched, setTouched] = useState(false);
   const [email, setEmail] = useState(lead.email ?? "");
-  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ sent: boolean; reason?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const needsConsent = EMAIL_KIND_IS_AD[kind];
 
   // Vorlage wechseln, solange der Berater den Text nicht selbst editiert hat.
   function switchKind(k: EmailKind) {
@@ -77,10 +74,6 @@ export function EmailCompose({
   async function send() {
     setError(null);
     if (!email.trim()) return setError("Bitte eine E-Mail-Adresse eintragen.");
-    if (needsConsent && !consent)
-      return setError(
-        "Bitte bestätigen, dass der Kunde im Anruf um die Zusendung gebeten hat.",
-      );
     setBusy(true);
     try {
       if (email.trim() !== (lead.email ?? "")) {
@@ -98,7 +91,6 @@ export function EmailCompose({
           kind,
           subject,
           text,
-          consentFromCall: consent,
           callId: callId ?? null,
         }),
       }).then((r) => r.json());
@@ -134,13 +126,12 @@ export function EmailCompose({
           <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
             <Check className="h-10 w-10 text-[#1a7f37]" />
             <p className="text-[15px] font-semibold text-[var(--color-fg)]">
-              {done.sent ? "Mail gesendet." : "Erfasst (Versand inaktiv)."}
+              {done.sent ? "Mail gesendet." : "Nicht versendet."}
             </p>
             {!done.sent && (
-              <p className="max-w-[380px] text-[12.5px] leading-relaxed text-[var(--color-fg-mute)]">
-                Resend ist noch nicht konfiguriert ({done.reason ?? "no-key"}) —
-                die Mail wurde protokolliert, aber nicht versendet. RESEND_API_KEY
-                + verifizierte Domain setzen, dann geht sie echt raus.
+              <p className="max-w-[380px] text-[12.5px] leading-relaxed text-[#d70015]">
+                Der Versand ist fehlgeschlagen ({done.reason ?? "unbekannt"}). Die
+                Mail ging NICHT raus — Adresse prüfen und erneut senden.
               </p>
             )}
             <button
@@ -203,19 +194,6 @@ export function EmailCompose({
                 className="mt-1 w-full resize-y rounded-[10px] border border-[var(--color-hairline)] px-3 py-2 text-[13.5px] font-normal normal-case leading-relaxed text-[var(--color-fg)] outline-none focus:border-[var(--color-copper-400)]"
               />
             </label>
-
-            {needsConsent && (
-              <label className="flex items-start gap-2 rounded-[10px] bg-[#fff8ec] px-3 py-2 text-[12px] leading-snug text-[#7a5b16]">
-                <input
-                  type="checkbox"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                  className="mt-0.5"
-                />
-                Der Kunde hat im Anruf ausdrücklich um die Zusendung gebeten
-                (Pflicht — Werbe-Mail ohne Einwilligung ist unzulässig).
-              </label>
-            )}
 
             {error && (
               <p className="flex items-start gap-1.5 text-[12px] text-[#d70015]">

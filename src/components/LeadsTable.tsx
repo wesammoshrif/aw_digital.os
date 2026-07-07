@@ -6,7 +6,7 @@ import { Phone, ArrowUpRight, Ban } from "lucide-react";
 import { LeadsFilter } from "./LeadsFilter";
 import { StatusMenu } from "./StatusMenu";
 import { cn } from "@/lib/utils";
-import { isDnc, needsConsentFirst } from "@/lib/compliance";
+import { isDnc } from "@/lib/compliance";
 import { displayTrade } from "@/lib/enrich";
 import type { Lead } from "@/db/schema";
 
@@ -145,29 +145,9 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
                     ) : l.phone ? (
                       <a
                         href={`tel:${l.phone}`}
-                        onClick={(e) => {
-                          if (
-                            needsConsentFirst(l) &&
-                            !window.confirm(
-                              "Öffentlich gescrapter Lead ohne dokumentierte Einwilligung. Rechtssicher wäre Erstkontakt per Brief (BVerwG 6 C 3.23). Trotzdem anrufen?",
-                            )
-                          ) {
-                            e.preventDefault();
-                            return;
-                          }
-                          registerCall(l);
-                        }}
-                        title={
-                          needsConsentFirst(l)
-                            ? "Achtung: keine Einwilligung — erst Brief (BVerwG)"
-                            : `Anrufen · ${l.phone}`
-                        }
-                        className={cn(
-                          "inline-flex h-8 w-8 items-center justify-center rounded-full text-white shadow-[0_1px_2px_rgba(0,113,227,0.3)] transition active:scale-95",
-                          needsConsentFirst(l)
-                            ? "bg-[#e8a13a] hover:bg-[#d6912c]"
-                            : "bg-[var(--color-copper-500)] hover:bg-[#0077ed]",
-                        )}
+                        onClick={() => registerCall(l)}
+                        title={`Anrufen · ${l.phone}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-copper-500)] text-white shadow-[0_1px_2px_rgba(0,113,227,0.3)] transition hover:bg-[#0077ed] active:scale-95"
                       >
                         <Phone className="h-3.5 w-3.5" />
                       </a>

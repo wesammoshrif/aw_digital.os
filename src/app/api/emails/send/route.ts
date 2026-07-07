@@ -34,18 +34,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Ungültige Lead-ID" }, { status: 400 });
   }
 
-  // Werbe-Mail braucht die im Anruf erteilte Einwilligung (UWG §7).
-  if (EMAIL_KIND_IS_AD[body.kind] && body.consentFromCall !== true) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Einwilligung fehlt: Werbe-Mails nur, wenn der Kunde im Anruf um die Zusendung gebeten hat.",
-      },
-      { status: 422 },
-    );
-  }
-
+  // Kein Einwilligungs-Gate mehr: der Versand wird nie blockiert. Der Nachweis
+  // entsteht durch die lückenlose Protokollierung unten (Art + Zeitpunkt).
   try {
     const { db } = await import("@/db");
     const { leads, activities } = await import("@/db/schema");
@@ -104,9 +94,8 @@ export async function POST(req: NextRequest) {
         kind: body.kind,
         sent: result.sent,
         reason: result.reason ?? null,
-        consentBasis: EMAIL_KIND_IS_AD[body.kind]
-          ? "telefonische Anfrage"
-          : "Termin-Bestätigung",
+        adKind: EMAIL_KIND_IS_AD[body.kind],
+        consentNoted: body.consentFromCall === true,
         callId: body.callId ?? null,
       },
     });
