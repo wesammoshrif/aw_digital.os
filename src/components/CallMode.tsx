@@ -16,6 +16,7 @@ import {
   Pause,
   Mail,
   Ban,
+  Trophy,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 import type { Lead } from "@/db/schema";
 import { applyCadence, type Disposition } from "@/lib/cadence";
 import { isDnc } from "@/lib/compliance";
+import { provisionPerTermin, fmtEuro } from "@/lib/provision";
 
 const DISPOSITIONS = [
   { key: "interested", label: "Interesse", icon: CheckCircle2, tone: "copper", description: "Wärmer Lead — Audit senden" },
@@ -52,10 +54,12 @@ export function CallMode({
   lead,
   nextLeadId,
   callBlocked,
+  focusMode = false,
 }: {
   lead: Lead;
   nextLeadId?: string | null;
   callBlocked?: boolean;
+  focusMode?: boolean;
 }) {
   const router = useRouter();
   // Einziger harter Schutz: DNC (Kunde hat Anrufe ausdrücklich abbestellt) —
@@ -74,6 +78,8 @@ export function CallMode({
   const [apptPicking, setApptPicking] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [apptDate, setApptDate] = useState("");
+  // Termin gebucht → kurze Provisions-Motivation, bevor es weitergeht.
+  const [celebrateProvision, setCelebrateProvision] = useState(false);
   const popupRef = useRef<Window | null>(null);
   // Anruf-Start für die Dauer-/Erreichungs-Statistik (connectRate).
   const callStartRef = useRef<number | null>(null);
@@ -120,6 +126,7 @@ export function CallMode({
       // Pflicht-Notiz: bevorzugt die im Popup erfasste Notiz, sonst die lokal
       // getippte. So wird das „was kam raus?" aus der Anruf-Abfrage gespeichert.
       const effNote = (lastCallDataRef.current?.note ?? "").trim() || note.trim();
+      let ok = false;
       try {
         // 1. Lead-Status aktualisieren
         const res = await fetch(`/api/leads/${lead.id}`, {
@@ -228,24 +235,38 @@ export function CallMode({
           popupRef.current?.close();
         } catch {}
         popupRef.current = null;
-        // Verspricht "springt automatisch zum nächsten" → wenn es einen
-        // nächsten fälligen Lead gibt, dorthin springen; sonst Dashboard.
-        setTimeout(
-          () => router.push(nextLeadId ? `/leads/${nextLeadId}` : "/"),
-          800,
-        );
+        // Termin? Kurz die mögliche Provision feiern (Motivation), dann weiter.
+        const isTermin = dispo === "appointment";
+        if (isTermin) setCelebrateProvision(true);
+        // Im Fokus-Modus zurück auf /fokus, aber den GERADE bearbeiteten Lead
+        // überspringen (?skip) — sonst zeigt queue[0] denselben Lead erneut
+        // (z.B. „Besetzt" bleibt fällig) = Endlosschleife. Sonst zum nächsten
+        // Lead bzw. Dashboard.
+        const dest = focusMode
+          ? `/fokus?skip=${lead.id}`
+          : nextLeadId
+            ? `/leads/${nextLeadId}`
+            : "/";
+        setTimeout(() => router.push(dest), isTermin ? 2600 : 800);
+        ok = true;
       } catch (err) {
         setSaveError(
           "Speichern fehlgeschlagen: " +
             String((err as Error).message ?? err),
         );
       } finally {
-        setSaving(null);
         lastCallDataRef.current = null;
-        dispatchingRef.current = false;
+        // Bei Erfolg NICHT entsperren: wir navigieren gleich weg und die
+        // Instanz wird neu gemountet. Würden wir hier saving/dispatchingRef
+        // freigeben, wäre das Dispo-Grid im 800–2600ms-Fenster erneut klickbar
+        // → zweiter PATCH + Doppel-Termin. Nur im Fehlerfall entsperren.
+        if (!ok) {
+          setSaving(null);
+          dispatchingRef.current = false;
+        }
       }
     },
-    [lead.id, lead.status, lead.attempts, note, router, nextLeadId],
+    [lead.id, lead.status, lead.attempts, note, router, nextLeadId, focusMode],
   );
 
   // ── Dispo aus dem Souffleur-Popup übernehmen ─────────────────────
@@ -297,6 +318,9 @@ export function CallMode({
 
   return (
     <div className="space-y-5">
+      {celebrateProvision && (
+        <ProvisionCelebration onClose={() => setCelebrateProvision(false)} />
+      )}
       {/* ── Phone block ───────────────────────────────────────────── */}
       <div className="relative overflow-hidden rounded-[var(--radius-xl)] border border-[var(--color-hairline)] bg-white p-6 shadow-[var(--shadow-1)]">
         {dncBlocked && (
@@ -574,6 +598,35 @@ export function CallMode({
             onClose={() => setEmailOpen(false)}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Motivations-Overlay nach einem gebuchten Termin: mögliche Provision groß. */
+function ProvisionCelebration({ onClose }: { onClose: () => void }) {
+  const amount = provisionPerTermin();
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
+      onClick={onClose}
+    >
+      <div className="flex w-full max-w-[420px] flex-col items-center gap-3 rounded-[22px] bg-white px-8 py-9 text-center shadow-[var(--shadow-3)] [animation:ws-rise_0.4s_var(--ease-out)]">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#eafaf0] text-[var(--color-success)]">
+          <Trophy className="h-8 w-8" />
+        </span>
+        <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--color-success)]">
+          Termin gebucht
+        </div>
+        <div className="text-[14px] text-[var(--color-fg-dim)]">
+          Mögliche Provision
+        </div>
+        <div className="text-mono text-[48px] font-semibold leading-none tabular text-[var(--color-fg)]">
+          {fmtEuro(amount)}
+        </div>
+        <p className="mt-1 text-[12.5px] text-[var(--color-fg-mute)]">
+          Stark. Weiter zum nächsten Lead.
+        </p>
       </div>
     </div>
   );

@@ -674,12 +674,20 @@ export async function dashboardSummary() {
     todayProgress: STREAK.todayProgress ?? 0,
     todayTarget: STREAK.todayTarget ?? 25,
   };
+  let todayAppointments = 0;
   if (!isMockMode) {
     const s = await getStreak();
     const todayStr = dayKey(now);
     const allCalls = await listCalls();
     const todayProgress = allCalls.filter(
       (c) => c.startedAt && dayKey(c.startedAt) === todayStr,
+    ).length;
+    // Heutige Termin-Abschlüsse (Dispo = Termin) → Provisions-Motivation.
+    todayAppointments = allCalls.filter(
+      (c) =>
+        c.startedAt &&
+        dayKey(c.startedAt) === todayStr &&
+        c.dispo === "appointment",
     ).length;
     // Tagesziel aus der Rampe statt hardcoded 25. Anker = konfiguriertes
     // Startdatum, sonst der erste Anruf des Nutzers, sonst heute (= Start 25).
@@ -701,6 +709,7 @@ export async function dashboardSummary() {
     pipeline,
     weeklyCalls: isMockMode ? callsThisWeek() : await weeklyCallsDb(now),
     streak,
+    todayAppointments,
     upcomingAppointments: upcoming.length,
     nextAppt,
     activeProjects,

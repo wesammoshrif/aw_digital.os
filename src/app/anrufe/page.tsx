@@ -29,7 +29,7 @@ export default async function AnrufePage() {
       eyebrow="Protokoll"
       title="Anrufe"
     >
-      <CallLog rows={rows} />
+      <CallLog rows={rows} nowMs={Date.now()} />
     </Shell>
   );
 }

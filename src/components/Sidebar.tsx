@@ -18,6 +18,7 @@ import {
   Ban,
   CalendarClock,
   Radar,
+  Crosshair,
   Menu,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Heute", icon: Phone },
+  { href: "/fokus", label: "Cold-Call-Fokus", icon: Crosshair },
   { href: "/leads/finder", label: "Leads finden", icon: Radar },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/anrufe", label: "Anrufe", icon: PhoneCall },

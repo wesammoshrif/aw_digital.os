@@ -6,7 +6,8 @@ import { TargetRing, WeekSparkline } from "@/components/TargetRing";
 import { QueueItem } from "@/components/QueueItem";
 import { CountUp } from "@/components/CountUp";
 import { dashboardSummary, isMockMode } from "@/lib/store";
-import { Phone, Calendar, TrendingUp, ArrowRight, Euro, Clock, FileText, Radio } from "lucide-react";
+import { provisionPerTermin, fmtEuro, PROVISION_DEFAULT } from "@/lib/provision";
+import { Phone, Calendar, TrendingUp, ArrowRight, Euro, Clock, FileText, Radio, Crosshair, Trophy } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -58,15 +59,15 @@ export default async function HomePage() {
               Du bist seit {data.streak.current} Tagen dran — Rekord ist{" "}
               {data.streak.record}. Kette nicht reißen lassen.
             </p>
-            <ButtonLink
-              href="#queue"
-              variant="primary"
-              size="md"
-              className="mt-5"
-            >
-              <Phone className="h-4 w-4" />
-              Nächsten anrufen
-            </ButtonLink>
+            <div className="mt-5 flex flex-wrap gap-2.5">
+              <ButtonLink href="/fokus" variant="primary" size="md">
+                <Crosshair className="h-4 w-4" />
+                Cold-Call-Fokus starten
+              </ButtonLink>
+              <ButtonLink href="#queue" variant="secondary" size="md">
+                Queue ansehen
+              </ButtonLink>
+            </div>
           </div>
         </Card>
 
@@ -292,6 +293,20 @@ function TodayGlance({
             <span className="text-[var(--color-fg-mute)]">
               {data.callStats.connectRate}% erreicht
             </span>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[#eafaf0] text-[var(--color-success)]">
+            <Trophy className="h-3.5 w-3.5" />
+          </span>
+          <div className="text-[12.5px] text-[var(--color-fg)]">
+            {data.todayAppointments}{" "}
+            {data.todayAppointments === 1 ? "Termin" : "Termine"} heute ·{" "}
+            <span className="font-medium text-[var(--color-success)]">
+              {fmtEuro(provisionPerTermin(PROVISION_DEFAULT) * data.todayAppointments)}
+            </span>{" "}
+            <span className="text-[var(--color-fg-mute)]">mögliche Provision</span>
           </div>
         </div>
       </div>
