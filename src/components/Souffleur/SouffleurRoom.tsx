@@ -651,6 +651,22 @@ export function SouffleurRoom({
         const decoder = new TextDecoder();
         let acc = "";
         let started = false;
+        // Zeile setzen, sobald diese Generation sie besitzt bzw. das Lock frei
+        // ist. Ein blanker „—"/leerer Text ist NUR im „warten"-Schritt ein
+        // gewolltes Zuhör-Signal — sonst NICHT anzeigen (er würde die Karte
+        // mitten im Gespräch leeren = „nichts kam"); dann bleibt die letzte
+        // brauchbare Zeile stehen. Rückgabe: wurde wirklich gesetzt?
+        const commitLine = (text: string): boolean => {
+          const tr = text.trim();
+          if (
+            (tr === "—" || tr === "-" || tr === "") &&
+            stageRef.current !== "warten"
+          )
+            return false;
+          aiLineGenRef.current = gen;
+          setAiLine(text);
+          return true;
+        };
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -672,10 +688,8 @@ export function SouffleurRoom({
             // beim Vorlesen) — sonst fröre die Anzeige an einem Teilsatz ein,
             // wenn der Berater den Anfang schon liest und das Lock greift. Nur
             // die ÜBERNAHME durch eine neue Generation wartet aufs freie Lock.
-            if (aiLineGenRef.current === gen || Date.now() >= lockUntil()) {
-              aiLineGenRef.current = gen;
-              setAiLine(acc);
-            }
+            if (aiLineGenRef.current === gen || Date.now() >= lockUntil())
+              commitLine(acc);
           }
         }
         // Stream fertig: die KOMPLETTE Zeile garantiert einblenden, sobald das
@@ -689,8 +703,7 @@ export function SouffleurRoom({
             const flush = () => {
               if (gen !== aiGenRef.current) return; // von neuerer Anfrage überholt
               if (aiLineGenRef.current === gen || Date.now() >= lockUntil()) {
-                aiLineGenRef.current = gen;
-                setAiLine(full);
+                commitLine(full);
               } else {
                 setTimeout(flush, 200);
               }
