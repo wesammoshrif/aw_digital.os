@@ -1,7 +1,7 @@
 /**
  * POST /api/souffleur/suggest
  *
- * Echtzeit-„Dirigent" via Claude Haiku — STREAMING: gibt den Satz, den der
+ * Echtzeit-„Dirigent" via Claude (Sonnet 5) — STREAMING: gibt den Satz, den der
  * Berater jetzt wörtlich sagen soll, Wort für Wort als reinen Text-Stream zurück
  * (fühlt sich live an, statt 1,8 s am Stück zu warten).
  *
@@ -34,13 +34,15 @@ import { requireAuth, parseJson } from "@/lib/api";
 import { souffleurSuggestSchema } from "@/lib/validation";
 import type Anthropic from "@anthropic-ai/sdk";
 
-// Live-Souffleur läuft auf Opus 4.8 (klügstes Modell). Fast Mode (bis 2,5×
-// Ausgabe-Tempo) ist Research-Preview und evtl. nicht auf jedem Konto frei —
-// deshalb per Env opt-in: SOUFFLEUR_FAST=true schaltet es zu, ohne Fast-Mode
-// läuft Standard-Opus-4.8 garantiert. Warm-up muss dieselbe Wahl spiegeln,
-// sonst Cache-Miss (Speed-Wechsel invalidiert den Prompt-Cache).
-const LIVE_MODEL = "claude-opus-4-8";
-const FAST_MODE = process.env.SOUFFLEUR_FAST === "true";
+// Live-Zeile läuft auf Sonnet 5 — deutlich schnellerer erster Token als Opus,
+// fast so stark, günstiger: bester Kompromiss für einen Live-Teleprompter (Tempo
+// vor letzter Klugheit). Post-Call-Summary/agentReview bleiben auf Opus 4.8.
+// Fast Mode gibt es NUR für Opus 4.8/4.7, auf Sonnet also NICHT verfügbar →
+// hier hart inert (zusätzlich per Env aus). Wechselt die Live-Zeile je zurück
+// auf Opus, greift SOUFFLEUR_FAST=true wieder. Warm-up spiegelt Modell + Speed.
+const LIVE_MODEL = "claude-sonnet-5";
+const FAST_MODE =
+  process.env.SOUFFLEUR_FAST === "true" && LIVE_MODEL.startsWith("claude-opus");
 const FAST_OPTS = FAST_MODE
   ? { speed: "fast" as const, betas: ["fast-mode-2026-02-01"] }
   : {};
