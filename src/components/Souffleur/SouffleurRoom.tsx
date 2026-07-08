@@ -266,6 +266,7 @@ export function SouffleurRoom({
   const micRetryRef = useRef(0);
   const sysReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sysRetryRef = useRef(0);
+  const sysAudioWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null); // WS live, aber kein Kundenaudio?
   const sysCtxRef = useRef<AudioContext | null>(null);
   const sysStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -846,6 +847,10 @@ export function SouffleurRoom({
       clearTimeout(sysReconnectRef.current);
       sysReconnectRef.current = null;
     }
+    if (sysAudioWatchdogRef.current) {
+      clearTimeout(sysAudioWatchdogRef.current);
+      sysAudioWatchdogRef.current = null;
+    }
     try {
       recorderRef.current?.stop?.();
     } catch {}
@@ -887,10 +892,24 @@ export function SouffleurRoom({
 
       const ctx = new AudioContext();
       sysCtxRef.current = ctx;
+      // AudioContext startet außerhalb einer Klick-Geste ggf. suspended (Chrome/
+      // ChromeOS) → resume, sonst liefert der ganze Graph Stille. Best-effort.
+      try {
+        await ctx.resume();
+      } catch {}
       const src = ctx.createMediaStreamSource(stream);
       const an = ctx.createAnalyser();
       an.fftSize = 256;
       src.connect(an);
+      // KERNFIX Chromebook: ChromeOS/Chrome nimmt einen reinen REMOTE-WebRTC-Track
+      // (die Kundenstimme aus dem SIP-Anruf) mit MediaRecorder NICHT auf — es
+      // kommen stille Chunks, Deepgram liefert kein Transkript → nach dem Opener
+      // keine weitere Zeile. Workaround: den Remote-Track durch einen WebAudio-
+      // Sink (MediaStreamDestination) in einen LOKALEN Track wandeln und DIESEN
+      // aufnehmen. Das „zieht" zugleich den Remote-Track aktiv (kein Silence).
+      const dest = ctx.createMediaStreamDestination();
+      src.connect(dest);
+      const recStream = dest.stream;
       const data = new Uint8Array(an.frequencyBinCount);
       const tick = () => {
         an.getByteFrequencyData(data);
@@ -934,7 +953,7 @@ export function SouffleurRoom({
             }
             try {
               recorderRef.current?.stop?.();
-              const rec = new MediaRecorder(stream, {
+              const rec = new MediaRecorder(recStream, {
                 mimeType: "audio/webm;codecs=opus",
               });
               recorderRef.current = rec;
@@ -944,6 +963,17 @@ export function SouffleurRoom({
               };
               rec.start(250);
               setDgStatus("live");
+              // Watchdog: WS ist live, aber wenn ~9s KEIN Kunden-Transkript kommt,
+              // hört der Chromebook den SIP-Ton nicht auf (meist tel:-Weg statt
+              // Browser-Anruf / kein Headset). Klarer Hinweis statt totem Souffleur.
+              if (sysAudioWatchdogRef.current)
+                clearTimeout(sysAudioWatchdogRef.current);
+              sysAudioWatchdogRef.current = setTimeout(() => {
+                if (sysStreamRef.current === stream)
+                  setTranscriptionHint(
+                    "Kunde wird nicht gehört. Bitte über den blauen Browser-Anruf telefonieren (nicht den Telefon-Link) und ein Kabel-Headset nutzen.",
+                  );
+              }, 9000);
             } catch {
               try {
                 ws.close();
@@ -966,6 +996,11 @@ export function SouffleurRoom({
               const text = d.channel?.alternatives?.[0]?.transcript;
               if (text && d.is_final) {
                 sysRetryRef.current = 0; // gesunde Session → Budget zurück
+                // Kundenaudio kommt an → Watchdog entwarnen.
+                if (sysAudioWatchdogRef.current) {
+                  clearTimeout(sysAudioWatchdogRef.current);
+                  sysAudioWatchdogRef.current = null;
+                }
                 const { minConf, segMs } = dgWordStats(d, speechStartedRef.current);
                 onCustomerText(text, "Kunde", !!d.speech_final, minConf, segMs);
               }
