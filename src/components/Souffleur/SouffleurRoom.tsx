@@ -303,6 +303,7 @@ export function SouffleurRoom({
     [],
   );
   const aiGenRef = useRef(0); // laufende Nummer pro KI-Anfrage (latest-wins beim Stream)
+  const aiLineGenRef = useRef(-1); // welche Generation die sichtbare Zeile aktuell besitzt
   const lastAiLenRef = useRef(0); // Zeichenstand beim letzten KI-Call
   const elapsedRef = useRef(0);
   const phaseRef = useRef<Phase>("kalt");
@@ -666,12 +667,37 @@ export function SouffleurRoom({
               started = true;
               setConvoState("warten"); // erstes Wort da → „KI wertet aus" weg
             }
-            // Anzeige NUR aktualisieren, wenn der Berater nicht gerade liest —
-            // der Stream akkumuliert weiter (acc), nur das Einblenden hält an.
-            if (Date.now() >= lockUntil()) setAiLine(acc);
+            // Sobald DIESE Generation die sichtbare Zeile besitzt, wächst sie
+            // IMMER weiter (acc ist append-only = nie ein Rückzug, gefahrlos
+            // beim Vorlesen) — sonst fröre die Anzeige an einem Teilsatz ein,
+            // wenn der Berater den Anfang schon liest und das Lock greift. Nur
+            // die ÜBERNAHME durch eine neue Generation wartet aufs freie Lock.
+            if (aiLineGenRef.current === gen || Date.now() >= lockUntil()) {
+              aiLineGenRef.current = gen;
+              setAiLine(acc);
+            }
           }
         }
-        if (gen === aiGenRef.current) setConvoState("warten");
+        // Stream fertig: die KOMPLETTE Zeile garantiert einblenden, sobald das
+        // Lock frei ist — auch wenn diese Generation wegen Dauer-Lock nie zur
+        // Anzeige kam. Ohne diesen Flush bliebe ein halber Satz stehen.
+        if (gen === aiGenRef.current) {
+          setConvoState("warten");
+          acc += decoder.decode(); // Rest-Bytes (Mehrbyte-Zeichen an Chunk-Grenzen)
+          const full = acc;
+          if (full.trim()) {
+            const flush = () => {
+              if (gen !== aiGenRef.current) return; // von neuerer Anfrage überholt
+              if (aiLineGenRef.current === gen || Date.now() >= lockUntil()) {
+                aiLineGenRef.current = gen;
+                setAiLine(full);
+              } else {
+                setTimeout(flush, 200);
+              }
+            };
+            flush();
+          }
+        }
       })
       .catch(() => {
         if (gen === aiGenRef.current) setConvoState("warten");

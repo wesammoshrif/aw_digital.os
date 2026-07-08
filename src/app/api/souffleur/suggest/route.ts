@@ -254,7 +254,10 @@ Gib jetzt NUR den Wortlaut aus, den der Berater laut sagt — in Ich/Wir-Form, o
 
     const mstream = client.beta.messages.stream({
       model: LIVE_MODEL,
-      max_tokens: 160,
+      // Genug Token-Luft, damit ein Zwei-Satz-Pitch (Preis + Termin) NIE mitten
+      // im Wort auf stop_reason=max_tokens abgeschnitten wird. Streaming stoppt
+      // ohnehin am natürlichen Satzende → kein Latenz-/Kostennachteil.
+      max_tokens: 256,
       // Fast Mode nur wenn per Env aktiviert (siehe FAST_OPTS oben).
       ...FAST_OPTS,
       // System-Prompt cachen (greift ab ~langem Prompt) → günstigere Folge-Calls.
