@@ -2087,6 +2087,16 @@ export function SouffleurRoom({
                     </p>
                   </div>
                 )}
+                {lead.notes?.trim() && (
+                  <div className="mb-3 rounded-[10px] bg-white px-3 py-2 ring-1 ring-[#cfe0fd]">
+                    <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[#0a3977]">
+                      Bisherige Notizen — was beim letzten Mal war
+                    </span>
+                    <p className="mt-0.5 max-h-[110px] overflow-y-auto whitespace-pre-line text-[12.5px] leading-snug text-[var(--color-fg-dim)]">
+                      {lead.notes}
+                    </p>
+                  </div>
+                )}
                 <div className="grid gap-3 sm:grid-cols-2">
                   {tradeCard && (
                     <div>

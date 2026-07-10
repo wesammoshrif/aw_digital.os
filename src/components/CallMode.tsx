@@ -17,6 +17,7 @@ import {
   Mail,
   Ban,
   Trophy,
+  StickyNote,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -482,6 +483,16 @@ export function CallMode({
 
       {/* ── Notes ──────────────────────────────────────────────────── */}
       <div>
+        {lead.notes?.trim() && (
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
+              <StickyNote className="h-3 w-3" /> Bisherige Notizen
+            </div>
+            <div className="max-h-[160px] overflow-y-auto whitespace-pre-line rounded-[var(--radius-md)] border border-[var(--color-hairline)] bg-[#fbfcff] px-3.5 py-2.5 text-[13px] leading-relaxed text-[var(--color-fg-dim)]">
+              {lead.notes}
+            </div>
+          </div>
+        )}
         <label className="mb-1.5 block text-[10.5px] uppercase tracking-[0.16em] text-[var(--color-fg-mute)]">
           Notiz
         </label>
